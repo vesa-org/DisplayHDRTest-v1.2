@@ -563,7 +563,7 @@ float3 XYZ_to_Luv(const float3& color_XYZ, const float3& white_XYZ)
     float3 ret;
     const float delta = 6.0f / 29.0f;
     float Y_ratio = color_XYZ.y / white_XYZ.y;
-    if (Y_ratio <= pow(delta, 3)) ret.x = pow(2.0f / delta, 3) * Y_ratio;
+    if (Y_ratio <= pow(delta, 3.f)) ret.x = pow(2.0f / delta, 3.f) * Y_ratio;
     else ret.x = 116.0f * pow(Y_ratio, 1.0f / 3.0f) - 16.0f;
     float u_prime = 4.0f * color_XYZ.x / (color_XYZ.x + 15.0f * color_XYZ.y + 3.0f * color_XYZ.z);
     float v_prime = 9.0f * color_XYZ.y / (color_XYZ.x + 15.0f * color_XYZ.y + 3.0f * color_XYZ.z);

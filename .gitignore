@@ -32,3 +32,6 @@
 /x64/
 .gitusers
 
+/ToneSpikeEffect.cso
+/SineSweepEffect.cso
+/BandedGradientEffect.cso

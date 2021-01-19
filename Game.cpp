@@ -49,6 +49,7 @@ Game::Game(PWSTR appTitle)
 
 void Game::ConstructorInternal()
 {
+	m_shiftKey = false;			// whether shift key is pressed
     m_currentTest = TestPattern::StartOfTest;
     m_currentColor = 0;			// Which of R/G/B to test.
 	m_currentProfileTile = 0;	// which intensity profile tile we are on
@@ -67,7 +68,10 @@ void Game::ConstructorInternal()
     m_showExplanatoryText = true;
     m_gamutVolume = 0.0f;
 
-//	These are sRGB code values for HDR10:
+	m_checkerboard = Checkerboard::Cb6x4;
+	m_snoodDiam = 40.f;							// OD of sensor snood in mm
+
+	//	These are sRGB code values for HDR10:
 	m_maxEffectivesRGBValue = -1;	// not set yet
 	m_maxFullFramesRGBValue = -1;
 	m_minEffectivesRGBValue = -1;
@@ -77,7 +81,9 @@ void Game::ConstructorInternal()
 	m_maxFullFramePQValue = -1;
 	m_minEffectivePQValue = -1;
 
-	// enable adjustment to tests 5.1 and 5.2 for active dimming
+	// enable adjustment to tests 5.x for active dimming
+	m_staticContrastsRGBValue = 0.0f;
+	m_staticContrastPQValue = 0.0f;
 	m_activeDimming50PQValue = 0.0f;
 	m_activeDimming05PQValue = 0.0f;
 
@@ -458,6 +464,8 @@ void Game::UpdateDxgiColorimetryInfo()
     ComPtr<IDXGIAdapter> dxgiAdapter;
     DX::ThrowIfFailed(dxgiDevice->GetAdapter(&dxgiAdapter));
 
+	dxgiAdapter->GetDesc(&m_adapterDesc);
+
     ComPtr<IDXGIFactory4> dxgiFactory;
     DX::ThrowIfFailed(dxgiAdapter->GetParent(IID_PPV_ARGS(&dxgiFactory)));
 
@@ -475,7 +483,6 @@ void Game::UpdateDxgiColorimetryInfo()
     output.As(&output6);
 
     DX::ThrowIfFailed(output6->GetDesc1(&m_outputDesc));
-
 
 	// Get raw (not OS-modified) luminance data:
 	DISPLAY_DEVICE device = {};
@@ -497,6 +504,26 @@ void Game::UpdateDxgiColorimetryInfo()
 	if (!foundMonitor)
 	{
 	}
+
+	winrt::Windows::Graphics::SizeInt32 dims;
+	dims = foundMonitor.NativeResolutionInRawPixels();
+	m_modeWidth = dims.Width;
+	m_modeHeight = dims.Height;
+
+	m_monitorName = foundMonitor.DisplayName();
+
+	m_connectionKind = foundMonitor.ConnectionKind();
+	m_physicalConnectorKind = foundMonitor.PhysicalConnector();
+	// m_connectionDescriptorKind = foundMonitor.DisplayMonitorDescriptorKind();
+    // foundMonitor.GetDescriptor( &m_connectionDescriptorKind );
+	// I think this is how to get the raw EDID or DisplayID byte array.
+
+	// set staticContrast test#5 to maxLuminance but clamped to 500nits.
+	float maxNits = fmin(m_outputDesc.MaxLuminance, 500.f);
+	if (CheckHDR_On())
+		m_staticContrastPQValue = Apply2084(maxNits / 10000.f) * 1023.f;
+	else
+		m_staticContrastsRGBValue = (maxNits / 270.f) * 255.f;
 
 	// save the raw (not OS-modified) luminance data:
 	m_rawOutDesc.MaxLuminance = foundMonitor.MaxLuminanceInNits();
@@ -643,7 +670,7 @@ void Game::GenerateTestPattern_StartOfTest(ID2D1DeviceContext2* ctx)
     if (m_newTestSelected) SetMetadataNeutral();
 
     text << m_appTitle;
-    text << L"\n\nVersion 1.10\n\n";
+    text << L"\n\nVersion 1.11\n\n";
     //text << L"ALT-ENTER: Toggle fullscreen: all measurements should be made in fullscreen\n";
 	text << L"->, PAGE DN:       Move to next test\n";
 	text << L"<-, PAGE UP:        Move to previous test\n";
@@ -695,12 +722,83 @@ void Game::GenerateTestPattern_ConnectionProperties(ID2D1DeviceContext2* ctx)
 
     std::wstringstream text;
 
-	text << L"\n\nConnection to: ";
-	WCHAR *DisplayName = wcsrchr(m_outputDesc.DeviceName, '\\');
+	text << L"Render GPU: ";
+	text << m_adapterDesc.Description;
+
+	text << L"\nMonitor: ";
+	text << m_monitorName.c_str();
+
+	text << L"\nDisplay: ";
+	WCHAR* DisplayName = wcsrchr(m_outputDesc.DeviceName, '\\');
 	text << ++DisplayName;
 
-	text << L"\n\nConnection bit depth: ";
-    text << std::to_wstring(m_outputDesc.BitsPerColor);
+	text << L"\nConnector: ";
+
+	switch (m_connectionKind)
+	{
+	case DisplayMonitorConnectionKind::Internal:
+		text << "Internal Panel ";
+		break;
+	case DisplayMonitorConnectionKind::Wired:
+		text << "Wired ";
+		break;
+	case DisplayMonitorConnectionKind::Wireless:
+		text << "Wireless";
+		break;
+	case DisplayMonitorConnectionKind::Virtual:
+		text << "Virtual";
+		break;
+	default:
+		text << "Error";
+		break;
+	}
+
+	switch (m_physicalConnectorKind)
+	{
+	case DisplayMonitorPhysicalConnectorKind::Unknown:
+		if (m_connectionKind != DisplayMonitorConnectionKind::Internal)
+			text << "unknown";
+		break;
+	case DisplayMonitorPhysicalConnectorKind::HD15:
+		text << "HD-15";
+		break;
+	case DisplayMonitorPhysicalConnectorKind::AnalogTV:
+		text << "Analog TV";
+		break;
+	case DisplayMonitorPhysicalConnectorKind::Dvi:
+		text << "DVI";
+		break;
+	case DisplayMonitorPhysicalConnectorKind::Hdmi:
+		text << "HDMI";
+		break;
+	case DisplayMonitorPhysicalConnectorKind::Lvds:
+		text << "LVDS";
+		break;
+	case DisplayMonitorPhysicalConnectorKind::Sdi:
+		text << "SDI";
+		break;
+	case DisplayMonitorPhysicalConnectorKind::DisplayPort:
+		text << "DisplayPort";
+		break;
+	default:
+		text << "Error";
+		break;
+	}
+
+#if 0 // TODO: apparently the method to return this does not exist in Windows.
+	switch (m_connectionDescriptorKind)
+	{
+	case DisplayMonitorDescriptorKind::Edid:
+		text << " with EDID";
+		break;
+	case DisplayMonitorDescriptorKind::DisplayId:
+		text << " with DisplayID";
+		break;
+	default:
+		text << " ";  // " Error"; 
+		break;
+	}
+#endif
 
     text << L"\n\nConnection colorspace: [";
 	text << std::to_wstring(m_outputDesc.ColorSpace);
@@ -718,11 +816,19 @@ void Game::GenerateTestPattern_ConnectionProperties(ID2D1DeviceContext2* ctx)
 		break;
 	}
 
+	DEVMODE DevNode;
+	EnumDisplaySettingsW(NULL, ENUM_CURRENT_SETTINGS, &DevNode);
+	m_displayFrequency = DevNode.dmDisplayFrequency;  // TODO: this only works on the iGPU!
+
+	text << "\nResolution: " << m_modeWidth << " x " << m_modeHeight;
+	text << " x " << std::to_wstring(m_outputDesc.BitsPerColor) << L"bits @ ";
+	text << m_displayFrequency << L"Hz\n";
+
     bool HDR_On = CheckHDR_On();
 
 	if (!HDR_On)
     {
-        text << L"\n\nBefore starting tests, make sure \"HDR and Advanced color\"";
+        text << L"\nBefore starting tests, make sure \"HDR and Advanced color\"";
         text << L"\n is enabled in the Display settings panel.";
     }
 
@@ -1128,7 +1234,7 @@ void Game::GenerateTestPattern_CalibrateMaxEffectiveValue(ID2D1DeviceContext2* c
 		RenderText(ctx, m_largeFormat.Get(), title.str(), m_testTitleRect);
 
 		PrintMetadata(ctx);
-}
+	}
 
 	m_newTestSelected = false;
 
@@ -1160,7 +1266,7 @@ void Game::GenerateTestPattern_CalibrateMaxFullFrameValue(ID2D1DeviceContext2 * 
 	else
 	{
 		c = m_maxFullFramesRGBValue / 255.0f;
-		nits = RemoveSRGBCurve(c)*80.0f;
+		nits = RemoveSRGBCurve(c)*270.0f;
 	}
 	ComPtr<ID2D1SolidColorBrush> centerBrush;
 	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &centerBrush));
@@ -1575,14 +1681,14 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2 * ctx) //*****
 
     if (m_showExplanatoryText)
     {
-		float fRad = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top)*0.04f);	// 4% screen area colorimeter box
+//		float fRad = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top)*0.04f)*0.35;	// 4% screen area colorimeter box
+		float fRad = 0.5f * m_snoodDiam / 25.4f * dpi * 1.2f;      // radius of dia 40mm -> inches -> dips
 		float2 center = float2(logSize.right*0.5f, logSize.bottom*0.5f);
 
 		D2D1_ELLIPSE ellipse =
 		{
 			D2D1::Point2F(center.x, center.y),
-			fRad * 0.35f,						// TODO: make target diameter 27mm using DPI data
-			fRad * 0.35f
+			fRad, fRad
 		};
 
 		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 1 );
@@ -1648,14 +1754,15 @@ void Game::GenerateTestPattern_TenPercentPeakMAX(ID2D1DeviceContext2 * ctx) //**
 
     if (m_showExplanatoryText)
     {
-		float fRad = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top)*0.04f);	// 4% screen area colorimeter box
+//		float fRad = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top)*0.04f);	// 4% screen area colorimeter box
+		float fRad = 0.5 * m_snoodDiam / 25.4 * dpi * 1.2;      // radius of dia 40mm -> inches -> dips
+
 		float2 center = float2(logSize.right*0.5f, logSize.bottom*0.5f);
 
 		D2D1_ELLIPSE ellipse =
 		{
 			D2D1::Point2F(center.x, center.y),
-			fRad * 0.35f,						// TODO: make target diameter 27mm using DPI data
-			fRad * 0.35f
+			fRad, fRad
 		};
 		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2 );
 
@@ -2005,14 +2112,17 @@ void Game::GenerateTestPattern_DualCornerBox(ID2D1DeviceContext2* ctx)	//*******
 	// Everything below this point should be hidden for actual measurements.
 	if (m_showExplanatoryText)
 	{
-		float fRad = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top) * 0.04f);	// 4% screen area colorimeter box
+		float dpi = m_deviceResources->GetDpi();
+
+//		float fRad = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top) * 0.04f);	// 4% screen area colorimeter box
+		float fRad = 0.5 * m_snoodDiam / 25.4 * dpi * 1.2;      // radius of dia 27mm -> inches -> dips
+
 		float2 center = float2(logSize.right * 0.5f, logSize.bottom * 0.5f);
 
 		D2D1_ELLIPSE ellipse =
 		{
 			D2D1::Point2F(center.x, center.y),
-			fRad * 0.35f,						// TODO: make target diameter 27mm using DPI data
-			fRad * 0.35f
+			fRad, fRad
 		};
 		ctx->DrawEllipse(&ellipse, m_redBrush.Get());
 
@@ -2120,24 +2230,247 @@ void Game::GenerateTestPattern_DualCornerBox(ID2D1DeviceContext2 * ctx)	//******
 }
 #endif
 
-void Game::GenerateTestPattern_StaticContrastRatio(ID2D1DeviceContext2 * ctx) //**************** 5.
+void Game::DrawChecker6x4( ID2D1DeviceContext2* ctx, float colorL, float colorR = -1.f)
 {
-	D2D1_RECT_F logSize = m_deviceResources->GetLogicalSize();
 	ComPtr<ID2D1SolidColorBrush> whiteBrush;			// brush for the "white" color
+	ComPtr<ID2D1SolidColorBrush> rightBrush;			// brush for the "white" color on right half of screen
 
-	float nits = m_outputDesc.MaxLuminance;             // for metadata
-	float avg = nits*0.50f;								// half of peak
-	if (m_newTestSelected) SetMetadata(nits, avg, GAMUT_Native);
-
-	float color = nitstoCCCS(nits);
-	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(color, color, color), &whiteBrush));
+	//get a brush of the right white:
+	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(colorL, colorL, colorL), &whiteBrush));
+	if (colorR > 0)
+		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(colorR, colorR, colorR), &rightBrush));
 
 	// draw the "white" boxes on the black background
+	D2D1_RECT_F logSize = m_deviceResources->GetLogicalSize();
 	const int nCols = 6;
 	const int nRows = 4;
+	float width = (logSize.right - logSize.left);
+	float height = (logSize.bottom - logSize.top);
+
 	float2 step;
-	step.x = (logSize.right - logSize.left) / nCols;
-	step.y = (logSize.bottom - logSize.top) / nRows;
+	step.x = width / nCols;
+	step.y = height / nRows;
+	for (int jRow = 0; jRow < nRows; jRow++)
+	{
+		for (int iCol = 0; iCol < nCols; iCol++)
+		{
+			if ((iCol + jRow) & 0x01)
+			{  
+				D2D1_RECT_F rect =
+				{
+					iCol * step.x,
+					jRow * step.y,
+					(iCol + 1) * step.x,
+					(jRow + 1) * step.y
+				};
+				if ( ( iCol*step.x < (0.5f * width - 5.f) ) || (colorR < 0) )	// draw left half in other color if valid
+					ctx->FillRectangle(&rect, whiteBrush.Get());
+				else if (colorR >= 0)
+					ctx->FillRectangle(&rect, rightBrush.Get());
+			}
+		}
+	}
+
+	// add any cross-hairs needed:
+	if (m_showExplanatoryText)
+	{
+		float dpi = m_deviceResources->GetDpi();
+
+		float fRad = 0.5 * m_snoodDiam / 25.4 * dpi * 1.2;      // radius of dia 40mm -> inches -> dips
+		float2 center = float2(logSize.right * 0.5f, logSize.bottom * 0.5f);
+
+		D2D1_ELLIPSE ellipse;
+		ellipse =
+		{
+			D2D1::Point2F(center.x + step.x * 0.5f, center.y + step.y * 0.5f),
+			fRad, fRad
+		};
+		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2.2f );
+		ellipse =
+		{
+			D2D1::Point2F(center.x + step.x * 0.5f, center.y - step.y * 0.5f),
+			fRad, fRad
+		};
+		ctx->DrawEllipse(&ellipse, m_redBrush.Get());
+		ellipse =
+		{
+			D2D1::Point2F(center.x - step.x * 0.5f, center.y - step.y * 0.5f),
+			fRad, fRad
+		};
+		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2.2f );
+		ellipse =
+		{
+			D2D1::Point2F(center.x - step.x * 0.5f, center.y + step.y * 0.5f),
+			fRad, fRad
+		};
+		ctx->DrawEllipse(&ellipse, m_redBrush.Get());
+
+		// draw crosshairs
+		ctx->DrawLine(
+			D2D1::Point2F(center.x - step.x, center.y - step.y * 0.5f),		// top horizontal line
+			D2D1::Point2F(center.x + step.x, center.y - step.y * 0.5f),
+			m_redBrush.Get(),
+			2
+		);
+		ctx->DrawLine(
+			D2D1::Point2F(center.x - step.x, center.y + step.y * 0.5f),		// bottom horizontal line
+			D2D1::Point2F(center.x + step.x, center.y + step.y * 0.5f),
+			m_redBrush.Get(),
+			2
+		);
+		ctx->DrawLine(
+			D2D1::Point2F(center.x - step.x*0.5f, center.y - step.y ),		// left vertical
+			D2D1::Point2F(center.x - step.x*0.5f, center.y + step.y ),
+			m_redBrush.Get(),
+			2
+		);
+		ctx->DrawLine(
+			D2D1::Point2F(center.x + step.x*0.5f, center.y - step.y ),		// right vertical
+			D2D1::Point2F(center.x + step.x*0.5f, center.y + step.y ),
+			m_redBrush.Get(),
+			2
+		);
+
+
+	}
+}
+
+void Game::DrawChecker4x3(ID2D1DeviceContext2* ctx, float colorL, float colorR = -1.f)
+{
+	ComPtr<ID2D1SolidColorBrush> whiteBrush;			// brush for the "white" color
+	ComPtr<ID2D1SolidColorBrush> rightBrush;			// brush for the "white" color on right half of screen
+
+	//get a brush of the right white:
+	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(colorL, colorL, colorL), &whiteBrush));
+	if (colorR > 0)
+		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(colorR, colorR, colorR), &rightBrush));
+
+	// draw the "white" boxes on the black background
+	D2D1_RECT_F logSize = m_deviceResources->GetLogicalSize();
+	const int nCols = 4;
+	const int nRows = 3;
+	float width = (logSize.right - logSize.left);
+	float height = (logSize.bottom - logSize.top);
+
+	float centerWidth = roundf(0.48f * width * 2.f / 3.f);				// eqn 5-1 in DHDR 1.1 SCR VP235H App. A
+	float sideWidth = floorf(width / 2.f) - centerWidth;				// eqn 5-2
+	float edgeHeight = floorf(0.26f * height);						// eqn 5-3
+	float centerHeight = height - 2.f * edgeHeight;					// eqn 5-4
+
+	float2 step[5];
+	step[0].x = 0.f;
+	step[1].x = sideWidth;
+	step[2].x = sideWidth + centerWidth;
+	step[3].x = width - sideWidth;
+	step[4].x = width;
+
+	step[0].y = 0.f;
+	step[1].y = edgeHeight;
+	step[2].y = edgeHeight + centerHeight;
+	step[3].y = height;
+
+	for (int jRow = 0; jRow < nRows; jRow++)
+	{
+		for (int iCol = 0; iCol < nCols; iCol++)
+		{
+			if ( !((iCol + jRow) & 0x01) )
+			{
+				D2D1_RECT_F rect =
+				{
+					step[iCol].x,
+					step[jRow].y,
+					step[iCol + 1].x,
+					step[jRow + 1].y
+				};
+				if ((iCol * step[iCol].x < (0.5 * width - 5.)) || (colorR < 0))	// draw left half in other color if valid
+					ctx->FillRectangle(&rect, whiteBrush.Get());
+				else if (colorR >= 0)
+					ctx->FillRectangle(&rect, rightBrush.Get());
+			}
+		}
+	}
+
+	// add any cross-hairs needed:
+	if (m_showExplanatoryText)
+	{
+		float dpi = m_deviceResources->GetDpi();
+		float fRad = 0.5 * m_snoodDiam / 25.4 * dpi * 1.2;      // radius of dia -> inches -> dips
+		float2 center;
+
+		center.y = height * 0.5f;
+		center.x = sideWidth + centerWidth * 0.5f;
+		D2D1_ELLIPSE ellipse;
+		ellipse =
+		{
+			D2D1::Point2F(center.x, center.y),
+			fRad, fRad
+		};
+		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2.5f );
+		center.x = sideWidth + centerWidth * 1.5f;
+		ellipse =
+		{
+			D2D1::Point2F(center.x, center.y),
+			fRad, fRad
+		};
+		ctx->DrawEllipse(&ellipse, m_redBrush.Get() );
+
+		ctx->DrawLine(
+			D2D1::Point2F( sideWidth,		height*0.5f ),							// horizontal line
+			D2D1::Point2F( width-sideWidth, height*0.5f ),
+			m_redBrush.Get(),
+			2
+		);
+		ctx->DrawLine(
+			D2D1::Point2F(sideWidth + centerWidth * 0.5f, edgeHeight),				// left vertical
+			D2D1::Point2F(sideWidth + centerWidth * 0.5f, height-edgeHeight ),
+			m_redBrush.Get(),
+			2
+		);
+		ctx->DrawLine(
+			D2D1::Point2F(sideWidth + centerWidth * 1.5f, edgeHeight),				// right vertical
+			D2D1::Point2F(sideWidth + centerWidth * 1.5f, height - edgeHeight ),
+			m_redBrush.Get(),
+			1
+		);
+
+	}
+
+}
+
+void Game::DrawChecker4x3n(ID2D1DeviceContext2* ctx, float colorL, float colorR = -1.f )
+{
+	ComPtr<ID2D1SolidColorBrush> whiteBrush;			// brush for the "white" color
+	ComPtr<ID2D1SolidColorBrush> rightBrush;			// brush for the "white" color on right half of screen
+
+	//get a brush of the correct white:
+	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(colorL, colorL, colorL), &whiteBrush));
+	if ( colorR > 0)
+		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(colorR, colorR, colorR), &rightBrush));
+
+	// draw the "white" boxes on the black background
+	D2D1_RECT_F logSize = m_deviceResources->GetLogicalSize();
+	const int nCols = 4;
+	const int nRows = 3;
+	float width  = (logSize.right - logSize.left);
+	float height = (logSize.bottom - logSize.top);
+
+	float centerWidth = roundf( 0.48f * width * 2.f / 3.f );				// eqn 5-1 in DHDR 1.1 SCR VP235H App. A
+	float sideWidth  = floorf( width/2.f ) - centerWidth;				// eqn 5-2
+	float edgeHeight = floorf(0.26f * height);							// eqn 5-3
+	float centerHeight = height - 2.f * edgeHeight;						// eqn 5-4
+
+	float2 step[5];
+	step[0].x =  0.;
+	step[1].x = sideWidth;
+	step[2].x = sideWidth + centerWidth;
+	step[3].x = width - sideWidth;
+	step[4].x = width;
+
+	step[0].y = 0.;
+	step[1].y = edgeHeight;
+	step[2].y = edgeHeight + centerHeight;
+	step[3].y = height;
+
 	for (int jRow = 0; jRow < nRows; jRow++)
 	{
 		for (int iCol = 0; iCol < nCols; iCol++)
@@ -2146,72 +2479,121 @@ void Game::GenerateTestPattern_StaticContrastRatio(ID2D1DeviceContext2 * ctx) //
 			{
 				D2D1_RECT_F rect =
 				{
-					iCol*step.x,
-					jRow*step.y,
-					(iCol+1)*step.x,
-					(jRow+1)*step.y
+					step[iCol].x,
+					step[jRow].y,
+					step[iCol+1].x,
+					step[jRow+1].y
 				};
-				ctx->FillRectangle(&rect, whiteBrush.Get());
+				if ((iCol * step[iCol].x < (0.5 * width - 5.)) || (colorR < 0))	// draw left half in other color if valid
+					ctx->FillRectangle(&rect, whiteBrush.Get());
+				else if (colorR >= 0)
+					ctx->FillRectangle(&rect, rightBrush.Get());
 			}
 		}
+	}
+
+	if (m_showExplanatoryText)
+	{
+		float dpi = m_deviceResources->GetDpi();
+		float fRad = 0.5f * m_snoodDiam / 25.4 * dpi * 1.2;      // radius of dia 27mm -> inches -> dips
+		float2 center;
+
+		center.y = height * 0.5f;
+		center.x = sideWidth + centerWidth * 0.5f;
+		D2D1_ELLIPSE ellipse;
+		ellipse =
+		{
+			D2D1::Point2F(center.x, center.y),
+			fRad, fRad
+		};
+		ctx->DrawEllipse(&ellipse, m_redBrush.Get());
+		center.x = sideWidth + centerWidth * 1.5f;
+		ellipse =
+		{
+			D2D1::Point2F(center.x, center.y),
+			fRad, fRad
+		};
+		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2.5f);
+
+		ctx->DrawLine(
+			D2D1::Point2F(sideWidth, height * 0.5f),										// horizontal line
+			D2D1::Point2F(width - sideWidth, height * 0.5f),
+			m_redBrush.Get(),
+			2
+		);
+		ctx->DrawLine(
+			D2D1::Point2F(sideWidth + centerWidth * 0.5f, edgeHeight),					// left vertical
+			D2D1::Point2F(sideWidth + centerWidth * 0.5f, height - edgeHeight),
+			m_redBrush.Get(),
+			1
+		);
+		ctx->DrawLine(
+			D2D1::Point2F(sideWidth + centerWidth * 1.5f, edgeHeight),					// right vertical
+			D2D1::Point2F(sideWidth + centerWidth * 1.5f, height - edgeHeight),
+			m_redBrush.Get(),
+			2
+		);
+	}
+
+}
+
+void Game::GenerateTestPattern_StaticContrastRatio(ID2D1DeviceContext2 * ctx)       //**************** 5.
+{
+	float color, nits;
+	if (CheckHDR_On())
+	{
+		nits = Remove2084(m_staticContrastPQValue/1023.0f) * 10000.0f;
+		color = nitstoCCCS( nits );
+	}
+	else
+	{
+		color = m_staticContrastsRGBValue /255.0f;
+		nits = RemoveSRGBCurve( color ) * 80.0f;
+	}
+
+	float avg = nits*0.50f;								// half of peak
+	if (m_newTestSelected) SetMetadata(nits, avg, GAMUT_Native);
+
+	switch (m_checkerboard)
+	{
+	case Checkerboard::Cb6x4:
+		DrawChecker6x4(ctx, color);
+		break;
+
+	case Checkerboard::Cb4x3:
+		DrawChecker4x3(ctx, color);
+		break;
+
+	case Checkerboard::Cb4x3not:
+		DrawChecker4x3n(ctx, color);
+		break;
 	}
 
 	// Everything below this point should be hidden during actual measurements.
 	if (m_showExplanatoryText)
 	{
-		float fRad = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top)*0.04f);	// 4% screen area colorimeter box
-		float2 center = float2( logSize.right*0.5f, logSize.bottom*0.5f );
-
-#if 0
-		D2D1_RECT_F centerRect =
-		{
-			center.x - fRad * 0.5f,
-			center.y - fRad * 0.5f,
-			center.x + fRad * 0.5f,
-			center.y + fRad * 0.5f
-		};
-		ctx->DrawRectangle(centerRect, m_redBrush.Get());
-#endif
-
-		D2D1_ELLIPSE ellipse;
-		ellipse =
-		{
-			D2D1::Point2F(center.x + step.x*0.5f, center.y + step.y*0.5f),
-			step.y * 0.35f,											// TODO: make target diameter 27mm using DPI data
-			step.y * 0.35f
-		};
-		ctx->DrawEllipse( &ellipse, m_redBrush.Get() );
-		ellipse =
-		{
-			D2D1::Point2F(center.x + step.x*0.5f, center.y - step.y*0.5f),
-			step.y * 0.35f,
-			step.y * 0.35f
-		};
-		ctx->DrawEllipse(&ellipse, m_redBrush.Get());
-		ellipse =
-		{
-			D2D1::Point2F(center.x - step.x*0.5f, center.y - step.y*0.5f),
-			step.y * 0.35f,
-			step.y * 0.35f
-		};
-		ctx->DrawEllipse(&ellipse, m_redBrush.Get());
-		ellipse =
-		{
-			D2D1::Point2F(center.x - step.x*0.5f, center.y + step.y*0.5f),
-			step.y * 0.35f,
-			step.y * 0.35f
-		};
-		ctx->DrawEllipse(&ellipse, m_redBrush.Get());
-
 		std::wstringstream title;
 		title << fixed << setw(8) << setprecision(2);
 
 		title << L"5. Static Contrast Ratio\nMeasure black vs white";
 		title << L"\nNits: ";
 		title << nits*BRIGHTNESS_SLIDER_FACTOR;
-		title << L"  HDR10: ";
-		title << setprecision(0);
-		title << Apply2084(color*80.f*BRIGHTNESS_SLIDER_FACTOR / 10000.f) * 1023.f;
+		if (CheckHDR_On())
+		{
+			title << L"  HDR10: ";
+			title << setprecision(0);
+			title << Apply2084(color*80.f*BRIGHTNESS_SLIDER_FACTOR / 10000.f) * 1023.f;
+//			title << m_staticContrastPQValue;
+		}
+		else
+		{
+			title << L"   sRGB: ";
+			title << setprecision(0);
+			title << m_staticContrastsRGBValue;
+		}
+
+		title << L" -adjust using up/down arrows\n";
+		title << L"Select checkerboard using LessThan < or GreaterThan > keys\n";
 		title << L"\n" << m_hideTextString;
 
 		RenderText(ctx, m_largeFormat.Get(), title.str(), m_testTitleRect );
@@ -2234,90 +2616,36 @@ void Game::GenerateTestPattern_ActiveDimming(ID2D1DeviceContext2 * ctx)	//******
 	float HDR10 = m_activeDimming50PQValue;
 	nits = Remove2084( HDR10/1023.0f) * 10000.0f;		// "white" checker brightness
 
-	float c = nitstoCCCS(nits)/BRIGHTNESS_SLIDER_FACTOR;
-	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &whiteBrush));
-
-	// draw the "white" boxes on the black background
-	const int nCols = 6;
-	const int nRows = 4;
-	float2 step;
-	step.x = (logSize.right - logSize.left) / nCols;
-	step.y = (logSize.bottom - logSize.top) / nRows;
-	for (int jRow = 0; jRow < nRows; jRow++)
+	float color = nitstoCCCS(nits)/BRIGHTNESS_SLIDER_FACTOR;
+	switch (m_checkerboard)
 	{
-		for (int iCol = 0; iCol < nCols; iCol++)
-		{
-			if ((iCol + jRow) & 0x01)
-			{
-				D2D1_RECT_F rect =
-				{
-					iCol*step.x,
-					jRow*step.y,
-					(iCol + 1)*step.x,
-					(jRow + 1)*step.y
-				};
-				ctx->FillRectangle(&rect, whiteBrush.Get());
-			}
-		}
+	case Checkerboard::Cb6x4:
+		DrawChecker6x4(ctx, color);
+		break;
+
+	case Checkerboard::Cb4x3:
+		DrawChecker4x3(ctx, color);
+		break;
+
+	case Checkerboard::Cb4x3not:
+		DrawChecker4x3n(ctx, color);
+		break;
 	}
 
 	// Everything below this point should be hidden during actual measurements.
 	if (m_showExplanatoryText)
 	{
-		float fRad = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top)*0.04f);	// 4% screen area colorimeter box
-		float2 center = float2(logSize.right*0.5f, logSize.bottom*0.5f);
-
-#if 0
-		D2D1_RECT_F centerRect =
-		{
-			center.x - fRad * 0.5f,
-			center.y - fRad * 0.5f,
-			center.x + fRad * 0.5f,
-			center.y + fRad * 0.5f
-		};
-		ctx->DrawRectangle(centerRect, m_redBrush.Get());
-#endif
-
-		D2D1_ELLIPSE ellipse;
-		ellipse =
-		{
-			D2D1::Point2F(center.x + step.x*0.5f, center.y + step.y*0.5f),
-			step.y * 0.35f,											// TODO: make target diameter 27mm using DPI data
-			step.y * 0.35f
-		};
-		ctx->DrawEllipse(&ellipse, m_redBrush.Get());
-		ellipse =
-		{
-			D2D1::Point2F(center.x + step.x*0.5f, center.y - step.y*0.5f),
-			step.y * 0.35f,
-			step.y * 0.35f
-		};
-		ctx->DrawEllipse(&ellipse, m_redBrush.Get());
-		ellipse =
-		{
-			D2D1::Point2F(center.x - step.x*0.5f, center.y - step.y*0.5f),
-			step.y * 0.35f,
-			step.y * 0.35f
-		};
-		ctx->DrawEllipse(&ellipse, m_redBrush.Get());
-		ellipse =
-		{
-			D2D1::Point2F(center.x - step.x*0.5f, center.y + step.y*0.5f),
-			step.y * 0.35f,
-			step.y * 0.35f
-		};
-		ctx->DrawEllipse(&ellipse, m_redBrush.Get());
-
 		std::wstringstream title;
 		title << fixed << setw(8) << setprecision(2);
 
 		title << L"5.1 Active Dimming\nMeasure black vs white\n";
 		title << L"Nits: ";
 		title << nits;
-		title << L" Adjust using up/down arrows\n";
-		title << L"HDR10: ";
+		title << L"  HDR10: ";
 		title << setprecision(0);
 		title << HDR10;
+		title << L" -adjust using up/down arrows\n";
+		title << L"Select checkerboard using LessThan < or GreaterThan > keys\n";
 		title << L"\n" << m_hideTextString;
 
 		RenderText(ctx, m_largeFormat.Get(), title.str(), m_testTitleRect);
@@ -2340,90 +2668,38 @@ void Game::GenerateTestPattern_ActiveDimmingDark(ID2D1DeviceContext2 * ctx) //**
 	float HDR10 = m_activeDimming05PQValue;
 	nits = Remove2084(HDR10 / 1023.0f) * 10000.0f;
 
-	float c = nitstoCCCS(nits)/BRIGHTNESS_SLIDER_FACTOR;
-	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &whiteBrush));
-
-	// draw the "white" boxes on the black background
-	const int nCols = 6;
-	const int nRows = 4;
-	float2 step;
-	step.x = (logSize.right - logSize.left) / nCols;
-	step.y = (logSize.bottom - logSize.top) / nRows;
-	for (int jRow = 0; jRow < nRows; jRow++)
+	// draw checkerboard of that brightness
+	float color = nitstoCCCS(nits)/BRIGHTNESS_SLIDER_FACTOR;
+	switch (m_checkerboard)
 	{
-		for (int iCol = 0; iCol < nCols; iCol++)
-		{
-			if ((iCol + jRow) & 0x01)
-			{
-				D2D1_RECT_F rect =
-				{
-					iCol*step.x,
-					jRow*step.y,
-					(iCol + 1)*step.x,
-					(jRow + 1)*step.y
-				};
-				ctx->FillRectangle(&rect, whiteBrush.Get());
-			}
-		}
+	case Checkerboard::Cb6x4:
+		DrawChecker6x4(ctx, color);
+		break;
+
+	case Checkerboard::Cb4x3:
+		DrawChecker4x3(ctx, color);
+		break;
+
+	case Checkerboard::Cb4x3not:
+		DrawChecker4x3n(ctx, color);
+		break;
 	}
+
 
 	// Everything below this point should be hidden during actual measurements.
 	if (m_showExplanatoryText)
 	{
-		float fRad = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top)*0.04f);	// 4% screen area colorimeter box
-		float2 center = float2(logSize.right*0.5f, logSize.bottom*0.5f);
-
-#if 0
-		D2D1_RECT_F centerRect =
-		{
-			center.x - fRad * 0.5f,
-			center.y - fRad * 0.5f,
-			center.x + fRad * 0.5f,
-			center.y + fRad * 0.5f
-		};
-		ctx->DrawRectangle(centerRect, m_redBrush.Get());
-#endif
-
-		D2D1_ELLIPSE ellipse;
-		ellipse =
-		{
-			D2D1::Point2F(center.x + step.x*0.5f, center.y + step.y*0.5f),
-			step.y * 0.35f,											// TODO: make target diameter 27mm using DPI data
-			step.y * 0.35f
-		};
-		ctx->DrawEllipse(&ellipse, m_redBrush.Get());
-		ellipse =
-		{
-			D2D1::Point2F(center.x + step.x*0.5f, center.y - step.y*0.5f),
-			step.y * 0.35f,
-			step.y * 0.35f
-		};
-		ctx->DrawEllipse(&ellipse, m_redBrush.Get());
-		ellipse =
-		{
-			D2D1::Point2F(center.x - step.x*0.5f, center.y - step.y*0.5f),
-			step.y * 0.35f,
-			step.y * 0.35f
-		};
-		ctx->DrawEllipse(&ellipse, m_redBrush.Get());
-		ellipse =
-		{
-			D2D1::Point2F(center.x - step.x*0.5f, center.y + step.y*0.5f),
-			step.y * 0.35f,
-			step.y * 0.35f
-		};
-		ctx->DrawEllipse(&ellipse, m_redBrush.Get());
-
 		std::wstringstream title;
 		title << fixed << setw(8) << setprecision(3);
 
 		title << L"5.2 Active Dimming Dark\nMeasure black vs white\n";
 		title << L"Nits: ";
 		title << nits;
-		title << L" Adjust using up/down arrows\n";
-		title << L"HDR10: ";
+		title << L"  HDR10: ";
 		title << setprecision(0);
 		title << HDR10;
+		title << L" -adjust using up/down arrows\n";
+		title << L"Select checkerboard using LessThan < or GreaterThan > keys\n";
 		title << L"\n" << m_hideTextString;
 
 		RenderText(ctx, m_largeFormat.Get(), title.str(), m_testTitleRect);
@@ -2443,108 +2719,34 @@ void Game::GenerateTestPattern_ActiveDimmingSplit(ID2D1DeviceContext2 * ctx) //*
 	float avg = nits * 0.50f;							// half of peak
 	if (m_newTestSelected) SetMetadata(nits, avg, GAMUT_Native);
 
-	nits = 50.0f;							// "white" checker brightness
+	nits = 50.0f;										// "white" checker brightness
 	float HDR10 = Apply2084(nits / 10000.f) * 1023.f;	// PQ code
-	float c = nitstoCCCS(nits)/BRIGHTNESS_SLIDER_FACTOR;
-	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &whiteBrush));
+	float colorL = nitstoCCCS(nits)/BRIGHTNESS_SLIDER_FACTOR;
 
-	// draw the "white" boxes on the black background
-	const int nCols = 6;
-	const int nRows = 4;
-	float2 step;
-	step.x = (logSize.right - logSize.left) / nCols;
-	step.y = (logSize.bottom - logSize.top) / nRows;
-	for (int jRow = 0; jRow < nRows; jRow++)
-	{
-		for (int iCol = 0; iCol < 3; iCol++)
-		{
-			if ((iCol + jRow) & 0x01)
-			{
-				D2D1_RECT_F rect =
-				{
-					iCol*step.x,
-					jRow*step.y,
-					(iCol + 1)*step.x,
-					(jRow + 1)*step.y
-				};
-				ctx->FillRectangle(&rect, whiteBrush.Get());
-			}
-		}
-	}
-
-	nits = 5.0f;					       // less "white" checker brightness
+	nits = 5.0f;										// less "white" checker brightness
 	HDR10 = Apply2084(nits / 10000.f) * 1023.f;			// PQ Code
-	c = nitstoCCCS(nits)/BRIGHTNESS_SLIDER_FACTOR;
-	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &whiteBrush));
+	float colorR = nitstoCCCS(nits)/BRIGHTNESS_SLIDER_FACTOR;
 
-	// draw the "white" boxes on the black background
-	step.x = (logSize.right - logSize.left) / nCols;
-	step.y = (logSize.bottom - logSize.top) / nRows;
-	for (int jRow = 0; jRow < nRows; jRow++)
+	// draw the squares
+	switch (m_checkerboard)
 	{
-		for (int iCol = 3; iCol < nCols; iCol++)
-		{
-			if ((iCol + jRow) & 0x01)
-			{
-				D2D1_RECT_F rect =
-				{
-					iCol*step.x,
-					jRow*step.y,
-					(iCol + 1)*step.x,
-					(jRow + 1)*step.y
-				};
-				ctx->FillRectangle(&rect, whiteBrush.Get());
-			}
-		}
+	case Checkerboard::Cb6x4:
+		DrawChecker6x4(ctx, colorL, colorR);
+		break;
+
+	case Checkerboard::Cb4x3:
+		DrawChecker4x3(ctx, colorL, colorR);
+		break;
+
+	case Checkerboard::Cb4x3not:
+		DrawChecker4x3n(ctx, colorL, colorR);
+		break;
 	}
+
 	// Everything below this point should be hidden during actual measurements.
 	if (m_showExplanatoryText)
 	{
-		float fRad = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top)*0.04f);	// 4% screen area colorimeter box
-		float2 center = float2(logSize.right*0.5f, logSize.bottom*0.5f);
-
-#if 0
-		D2D1_RECT_F centerRect =
-		{
-			center.x - fRad * 0.5f,
-			center.y - fRad * 0.5f,
-			center.x + fRad * 0.5f,
-			center.y + fRad * 0.5f
-		};
-		ctx->DrawRectangle(centerRect, m_redBrush.Get());
-#endif
-
-		D2D1_ELLIPSE ellipse;
-		ellipse =
-		{
-			D2D1::Point2F(center.x + step.x*0.5f, center.y + step.y*0.5f),
-			step.y * 0.35f,											// TODO: make target diameter 27mm using DPI data
-			step.y * 0.35f
-		};
-		ctx->DrawEllipse(&ellipse, m_redBrush.Get());
-		ellipse =
-		{
-			D2D1::Point2F(center.x + step.x*0.5f, center.y - step.y*0.5f),
-			step.y * 0.35f,
-			step.y * 0.35f
-		};
-		ctx->DrawEllipse(&ellipse, m_redBrush.Get());
-		ellipse =
-		{
-			D2D1::Point2F(center.x - step.x*0.5f, center.y - step.y*0.5f),
-			step.y * 0.35f,
-			step.y * 0.35f
-		};
-		ctx->DrawEllipse(&ellipse, m_redBrush.Get());
-		ellipse =
-		{
-			D2D1::Point2F(center.x - step.x*0.5f, center.y + step.y*0.5f),
-			step.y * 0.35f,
-			step.y * 0.35f
-		};
-		ctx->DrawEllipse(&ellipse, m_redBrush.Get());
-
-		nits = 50.0f;		// either 50 or 5 should be displayed
+		nits = 50.0f;										// either 50 or 5 should be displayed
 		std::wstringstream title;
 		title << fixed << setw(8) << setprecision(2);
 
@@ -2554,6 +2756,8 @@ void Game::GenerateTestPattern_ActiveDimmingSplit(ID2D1DeviceContext2 * ctx) //*
 		title << L"  HDR10: ";
 		title << setprecision(0);
 		title << HDR10;
+		title << L"\n";
+		title << L"Select checkerboard using LessThan < or GreaterThan > keys\n";
 		title << L"\n" << m_hideTextString;
  
 		RenderText(ctx, m_largeFormat.Get(), title.str(), m_testTitleRect);
@@ -3050,9 +3254,9 @@ void Game::GenerateTestPattern_ColorPatches			//********************************
 
 		title << L"\nUp & Down arrow keys rotate between RGBW colors\n";
 
-		RenderText(ctx, m_largeFormat.Get(), title.str(), m_testTitleRect, blackText);
+		RenderText(ctx, m_largeFormat.Get(), title.str(), m_testTitleRect );
 
-		PrintMetadata(ctx, blackText);
+		PrintMetadata(ctx);
 
 	}
     m_newTestSelected = false;
@@ -3111,9 +3315,9 @@ void Game::GenerateTestPattern_ColorPatches709(ID2D1DeviceContext2 * ctx)
         title << L"709 primaries\nUsing reference level of: " << nits;
         title << " nits.\nUp & Down arrow keys select white level.\n";
 
-        RenderText(ctx, m_largeFormat.Get(), title.str(), m_testTitleRect, true);
+        RenderText(ctx, m_largeFormat.Get(), title.str(), m_testTitleRect);
 
-		PrintMetadata(ctx, true);
+		PrintMetadata(ctx);
 	}
 
     m_newTestSelected = false;
@@ -3237,9 +3441,9 @@ void Game::GenerateTestPattern_ColorPatchesMAX(ID2D1DeviceContext2 * ctx, float 
     {
         title << L"\nUp & Down arrow keys rotate between RGBW colors\n";
 
-        RenderText(ctx, m_largeFormat.Get(), title.str(), m_testTitleRect, true);
+        RenderText(ctx, m_largeFormat.Get(), title.str(), m_testTitleRect );
 
-		PrintMetadata(ctx, true);
+		PrintMetadata(ctx);
 	}
     m_newTestSelected = false;
 
@@ -4187,16 +4391,21 @@ void Game::RenderText(ID2D1DeviceContext2* ctx, IDWriteTextFormat* fmt, std::wst
         textPos.bottom,
         &layout));
 
-    if (useBlackText)
+	if (useBlackText)
     {
-        ComPtr<ID2D1SolidColorBrush> blackBrush;
-        DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f), &blackBrush));
-        ctx->DrawTextLayout(D2D1::Point2F(textPos.left, textPos.top), layout.Get(), blackBrush.Get());
+		// add highlight
+//		ctx->DrawTextLayout(D2D1::Point2F(textPos.left, textPos.top), layout.Get(), m_whiteBrush.Get());
+		ctx->DrawTextLayout(D2D1::Point2F(textPos.left+1.,textPos.top+1.), layout.Get(), m_blackBrush.Get());
     }
     else
     {
-        ctx->DrawTextLayout(D2D1::Point2F(textPos.left, textPos.top), layout.Get(), m_whiteBrush.Get());
+		// add dropshadow
+		ctx->DrawTextLayout(D2D1::Point2F(textPos.left + 1, textPos.top + 1.), layout.Get(), m_blackBrush.Get());
+		ctx->DrawTextLayout(D2D1::Point2F(textPos.left, textPos.top), layout.Get(), m_whiteBrush.Get());
     }
+
+
+
 }
 #pragma endregion
 
@@ -4312,6 +4521,7 @@ void Game::CreateDeviceDependentResources()
 
 	// get reasonable starting points for calibration
 	InitEffectiveValues();
+
 	m_activeDimming50PQValue = 113 * 4;		// 50.825 nits in nearest 8-bit code value
 	m_activeDimming05PQValue = 64 * 4;		//  5.172 nits in nearest 8-bit code value
 
@@ -4488,6 +4698,7 @@ void Game::SetTestPattern(TestPattern testPattern)
     //	m_showExplanatoryText = true;
     m_newTestSelected = true;
 }
+
 // Set increment = true to go up, false to go down.
 void Game::ChangeTestPattern(bool increment)
 {
@@ -4526,7 +4737,8 @@ void Game::ChangeTestPattern(bool increment)
     m_newTestSelected = true;
 }
 
-float clamp(float v, float min, float max)
+// Keep value in range from min to max by clamping
+float clamp( float v, float min, float max )		// inclusive
 {
 	if (v > max)
 		v = max; else
@@ -4535,37 +4747,69 @@ float clamp(float v, float min, float max)
 	return v;
 }
 
-void Game::ChangeSubtest(bool increment)
+// Keep value in from min to max by wrapping
+float wrap( float v, float min, float max )			// inclusive
 {
-	int testTier;
+	float range = max - min + 1.f;
+	while (v >= max)
+		v -= range;
+	while (v < min)
+		v += range;
+	return v;
+}
+
+void Game::SetShift(bool shift)
+{
+	m_shiftKey = shift;
+}
+
+void Game::ChangeSubtest( INT32 increment )
+{
+	if (m_shiftKey)
+		increment *= 10;
+
 	switch (m_currentTest)
 	{
 	case TestPattern::PanelCharacteristics:
+		int testTier;
 		testTier = (int)m_testingTier;
-		testTier += (increment ? 1 : -1);
+		testTier += increment;
 		testTier = clamp(testTier, (int)TestingTier::DisplayHDR400, (int)TestingTier::DisplayHDR10000);
 		m_testingTier = (TestingTier)testTier;
 		break;
 
+	case TestPattern::StaticContrastRatio:
+		if (CheckHDR_On())
+		{
+			m_staticContrastPQValue += increment;
+			m_staticContrastPQValue = clamp(m_staticContrastPQValue, 100, 750);		// 1..?? nits
+		}
+		else
+		{
+			m_staticContrastsRGBValue += increment;
+			m_staticContrastsRGBValue = clamp(m_staticContrastsRGBValue, 0.f, 255.f);
+		}
+		break;
+
 	case TestPattern::ActiveDimming:
-		m_activeDimming50PQValue -= (increment ? 4 : -4 );
+		m_activeDimming50PQValue += increment;
 		m_activeDimming50PQValue = clamp(m_activeDimming50PQValue, 420, 488);	// 35..75 nits
 		break;
 
 	case TestPattern::ActiveDimmingDark:
-		m_activeDimming05PQValue -= (increment ? 4 : -4 );
-		m_activeDimming05PQValue = clamp(m_activeDimming05PQValue, 208, 292);	// 2.5..8.0 nits
+		m_activeDimming05PQValue += increment;
+		m_activeDimming05PQValue = clamp(m_activeDimming05PQValue, 208, 292); 	// 2.5..8 nits
 		break;
 
 	case TestPattern::CalibrateMaxEffectiveValue:
 		if (CheckHDR_On())
 		{
-			m_maxEffectivePQValue -= (increment ? 1 : -1);
+			m_maxEffectivePQValue += increment;
 			m_maxEffectivePQValue = clamp(m_maxEffectivePQValue, 0.0f, 10000.0f);
 		}
 		else
 		{
-			m_maxEffectivesRGBValue -= (increment ? 1 : -1);
+			m_maxEffectivesRGBValue += increment;
 			m_maxEffectivesRGBValue = clamp(m_maxEffectivesRGBValue, 0.0f, 255.0f);
 		}
 		break;
@@ -4573,12 +4817,12 @@ void Game::ChangeSubtest(bool increment)
 	case TestPattern::CalibrateMaxEffectiveFullFrameValue:
 		if (CheckHDR_On())
 		{
-			m_maxFullFramePQValue -= (increment ? 1 : -1);
+			m_maxFullFramePQValue += increment;
 			m_maxFullFramePQValue = clamp(m_maxFullFramePQValue, 0.0f, 10000.0f);
 		}
 		else
 		{
-			m_maxFullFramesRGBValue -= (increment ? 1 : -1);
+			m_maxFullFramesRGBValue += increment;
 			m_maxFullFramesRGBValue = clamp(m_maxFullFramesRGBValue, 0.0f, 255.0f);
 		}
 		break;
@@ -4586,17 +4830,17 @@ void Game::ChangeSubtest(bool increment)
 	case TestPattern::CalibrateMinEffectiveValue:
 		if (CheckHDR_On())
 		{
-			m_minEffectivePQValue -= (increment ? 1 : -1);
+			m_minEffectivePQValue += increment;
 			m_minEffectivePQValue = clamp(m_minEffectivePQValue, 0.0f, 10000.0f);
 		}
 		else
 		{
-			m_minEffectivesRGBValue -= (increment ? 1 : -1);
+			m_minEffectivesRGBValue += increment;
 			m_minEffectivesRGBValue = clamp(m_minEffectivesRGBValue, 0.0f, 255.0f);
 		}
 		break;
 
-	case TestPattern::ColorPatches:
+	case TestPattern::ColorPatches:						// These all rotate among R, G, B, and W.
 	case TestPattern::ColorPatches10:
 	case TestPattern::ColorPatchesMAX:
 	case TestPattern::ColorPatches709:
@@ -4604,34 +4848,13 @@ void Game::ChangeSubtest(bool increment)
 	case TestPattern::FullFrameSDRWhiteWithHDR:
 	case TestPattern::SharpeningFilter:
 	case TestPattern::ToneMapSpike:
-		if (increment)
-		{
-			m_currentColor++;
-			if (m_currentColor > 3)
-				m_currentColor = 0;
-		}
-		else
-		{
-			m_currentColor--;
-			if (m_currentColor < 0)
-				m_currentColor = 3;
-		}
-		m_currentColor = m_currentColor % 4;
+		m_currentColor -= increment;				
+		m_currentColor = wrap( m_currentColor, 0., 3. );	// Just wrap on each end
 		break;
 
 	case TestPattern::ProfileCurve:
-		if (increment)
-		{
-			m_currentProfileTile++;
-			if (m_currentProfileTile > (m_maxProfileTile))
-				m_currentProfileTile = 0;
-		}
-		else
-		{
-			m_currentProfileTile--;
-			if (m_currentProfileTile < 0)
-				m_currentProfileTile = m_maxProfileTile;
-		}
+		m_currentProfileTile += increment;
+		m_currentProfileTile = wrap(m_currentProfileTile, 0, m_maxProfileTile);
 		break;
 	}
 }
@@ -4641,6 +4864,36 @@ void Game::ChangeGradientColor(float deltaR, float deltaG, float deltaB)
     m_gradientColor.r += deltaR;
     m_gradientColor.g += deltaG;
     m_gradientColor.b += deltaB;
+}
+
+void Game:: ChangeCheckerboard(bool increment)
+{
+	if (increment)
+	{
+		if (Checkerboard::Cb4x3not == m_checkerboard )
+		{
+			// Wrap to the start of the list.
+			m_checkerboard = Checkerboard::Cb6x4;
+		}
+		else
+		{
+			unsigned int checkInt = static_cast<unsigned int>(m_checkerboard) + 1;
+			m_checkerboard = static_cast<Checkerboard>(checkInt);
+		}
+	}
+	else
+	{
+		if (Checkerboard::Cb6x4 == m_checkerboard)
+		{
+			// Wrap to the end of the list.
+			m_checkerboard = Checkerboard::Cb4x3not;
+		}
+		else
+		{
+			unsigned int checkInt = static_cast<unsigned int>(m_checkerboard) - 1;
+			m_checkerboard = static_cast<Checkerboard>(checkInt);
+		}
+	}
 }
 
 void Game::StartTestPattern(void)

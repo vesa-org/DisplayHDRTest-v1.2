@@ -16,6 +16,10 @@
 #include "Basicmath.h"
 #include <map>
 
+#include <winrt\Windows.Devices.Display.h>
+#include <winrt\Windows.Devices.Display.Core.h>
+#include <winrt\Windows.Devices.Enumeration.h>
+
 struct rawOutputDesc
 {
 	float MaxLuminance;
@@ -72,6 +76,13 @@ private:
 public:
 
     Game(PWSTR appTitle);
+
+    enum class Checkerboard             // Which pattern to use in Checkerboard tests                    5.x
+    {
+        Cb6x4,
+        Cb4x3,
+        Cb4x3not,
+    };
 
 	enum class TestPattern
 	{
@@ -144,10 +155,12 @@ public:
     // Test pattern control
     void SetTestPattern(TestPattern testPattern);
     void ChangeTestPattern(bool increment);
-    void ChangeSubtest(bool increment);
+    void ChangeSubtest( INT32 increment );
+    void SetShift( bool shift );
     void StartTestPattern(void);
     void ChangeGradientColor(float deltaR, float deltaG, float deltaB);
     void ChangeBackBufferFormat(DXGI_FORMAT fmt);
+    void ChangeCheckerboard(bool increment);
     bool ToggleInfoTextVisible();
     void SetMetadataNeutral(); // OS defaults
 	void PrintMetadata( ID2D1DeviceContext2* ctx, bool blackText = false );
@@ -164,6 +177,9 @@ private:
 	bool CheckHDR_On();
     bool CheckForDefaults();
 	void DrawLogo(ID2D1DeviceContext2 *ctx, float c );
+    void DrawChecker6x4(  ID2D1DeviceContext2* ctx, float colorL, float colorR );      // for displays > 20"
+    void DrawChecker4x3(  ID2D1DeviceContext2* ctx, float colorL, float colorR );      // for smaller panels
+    void DrawChecker4x3n( ID2D1DeviceContext2* ctx, float colorL, float colorR );      // nverse of above
     TestingTier GetTestingTier();
     WCHAR *GetTierName(TestingTier tier);
 	float GetTierLuminance(Game::TestingTier tier);
@@ -228,6 +244,16 @@ private:
 
     // Device resources.
     std::unique_ptr<DX::DeviceResources>    m_deviceResources;
+    DXGI_ADAPTER_DESC                                       m_adapterDesc;
+
+    winrt::hstring                                          m_monitorName;                  // friendlier name
+    winrt::Windows::Devices::Display::DisplayMonitorConnectionKind        m_connectionKind;               // Internal vs wired
+    winrt::Windows::Devices::Display::DisplayMonitorPhysicalConnectorKind m_physicalConnectorKind;        // HDMI vs DisplayPort
+    winrt::Windows::Devices::Display::DisplayMonitorDescriptorKind        m_connectionDescriptorKind;     // EDID vs DisplayID
+
+    DXGI_RATIONAL                                           m_verticalSyncRate;     // Current mode's max rate
+    DWORD                                                   m_displayFrequency;     // from EnumDisplaySettings -not precise
+
 
     Microsoft::WRL::ComPtr<ID2D1LinearGradientBrush>        m_gradientBrush;
     Microsoft::WRL::ComPtr<IDWriteTextLayout>               m_testTitleLayout;
@@ -243,30 +269,42 @@ private:
     Microsoft::WRL::ComPtr<IDWriteTextFormat>               m_smallFormat;
     Microsoft::WRL::ComPtr<IDWriteTextFormat>               m_largeFormat;
     Microsoft::WRL::ComPtr<IDWriteTextFormat>               m_monospaceFormat;
-    D2D1_RECT_F                                             m_testTitleRect; // Where to draw each test's title
-    D2D1_RECT_F                                             m_largeTextRect; // Where to draw large text for the test, if applicable
+    D2D1_RECT_F                                             m_testTitleRect;    // Where to draw each test's title
+    D2D1_RECT_F                                             m_largeTextRect;    // Where to draw large text for the test, if applicable
 	D2D1_RECT_F												m_MetadataTextRect;
     TestingTier                                             m_testingTier;
     TestPattern                                             m_currentTest;
     TestPattern                                             m_cachedTest;
+    bool                                                    m_shiftKey;         // whether shift key is pressed
     INT32                                                   m_currentColor;
 	INT32													m_currentProfileTile;
+    INT32                                                   m_modeWidth;        // resolution of current mode (actually native res now)
+    INT32                                                   m_modeHeight;
+    float                                                   m_snoodDiam;        // outside diameter of sensor snood in mm
+
 	UINT32													m_maxPQCode;		// PQ code of maxLuminance
 	INT32													m_maxProfileTile;	// highest tile worth testing on this panel
     float                                                   m_flashOn;
+    Checkerboard                                            m_checkerboard;     // for tests        5.x
     D2D1_COLOR_F                                            m_gradientColor;
     float                                                   m_gradientAnimationBase;
     bool                                                    m_showExplanatoryText;
     float                                                   m_testTimeRemainingSec;
     float                                                   m_gamutVolume;
-	float													m_maxEffectivesRGBValue;		// Code levels via manual test
+//TODO: these code values could all be INTs
+	float													m_maxEffectivesRGBValue;		    // Code levels via manual test
 	float													m_maxFullFramesRGBValue;
 	float													m_minEffectivesRGBValue;
-	float													m_maxEffectivePQValue;	
+	float													m_maxEffectivePQValue;	            // PQ is using HDR10 10bit encoding
 	float													m_maxFullFramePQValue;
 	float													m_minEffectivePQValue;
-	float													m_activeDimming50PQValue;
+    float                                                   m_staticContrastPQValue;            // for test 5. static contrast
+    float                                                   m_staticContrastsRGBValue;
+    float													m_activeDimming50PQValue;           // for tests 5.1, 5.2, 5.3 on Active Dimming
 	float													m_activeDimming05PQValue;
+    float													m_activeDimming50sRGBValue;         // probably no active dimming in sRGB mode
+    float													m_activeDimming05sRGBValue;         // only in HDR mode
+
 	bool                                                    m_newTestSelected; // Used for one-time initialization of test variables.
     bool                                                    m_dxgiColorInfoStale;
 	DXGI_HDR_METADATA_HDR10									m_Metadata;

@@ -286,9 +286,31 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         game->OnDisplayChange();
         break;
 
+// Handle keyboard inputs;
+// https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
+    case WM_KEYDOWN:
+        switch (wParam)
+        {
+        case VK_SHIFT:
+            game->SetShift( true );
+            break;
+
+        case VK_DOWN:
+            game->ChangeSubtest(-1);
+            break;
+        case VK_UP:
+            game->ChangeSubtest(1);
+            break;
+        }
+        break;
+
     case WM_KEYUP:
         switch (wParam)
         {
+        case VK_SHIFT:
+            game->SetShift( false );
+            break;
+
         case VK_SPACE:
             /*bool ignored*/ game->ToggleInfoTextVisible();
             break;
@@ -301,18 +323,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         case VK_NEXT:
             game->ChangeTestPattern(true);
             break;
-
         case VK_LEFT:
         case VK_PRIOR:
             game->ChangeTestPattern(false);
-            break;
-
-        case VK_DOWN:
-            game->ChangeSubtest(true);
-            break;
-
-        case VK_UP:
-            game->ChangeSubtest(false);
             break;
 
         case VK_ESCAPE:         // Youtube compat
@@ -361,6 +374,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
         case 0x53: // 's'
             game->ChangeGradientColor(0.05f, 0.05f, 0.05f);
+            break;
+
+        case VK_OEM_PERIOD:
+            game->ChangeCheckerboard(false);
+            break;
+
+        case VK_OEM_COMMA:
+            game->ChangeCheckerboard(true);
             break;
 
         //case 0x38: // '8'
