@@ -108,6 +108,11 @@ public:
 		BitDepthPrecision,          // 7. Uses custom effect.
         RiseFallTime,               // 8.
 		ProfileCurve,               // 9. Validate tracking of 2084 profile
+        LocalDimmingContrast,       // v1.2 
+        BlackLevelHDRvsSDR,         // v1.2 
+        BlackLevelCrush,            // v1.2
+        SubTitleFlicker,            // v1.2 
+        XRiteColors,			    // v1.2 cycle through the official Xrite patch colors
 		EndOfMandatoryTests,        // 
         SharpeningFilter,           // Uses custom Sine Sweep effect.
 		ToneMapSpike,				// Uses custom Tone Spike effect
@@ -213,7 +218,12 @@ private:
     void GenerateTestPattern_BitDepthPrecision(ID2D1DeviceContext2* ctx);					// 7
 	void GenerateTestPattern_RiseFallTime(ID2D1DeviceContext2* ctx);						// 8
 	void GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2* ctx);						// 9
-	void GenerateTestPattern_EndOfMandatoryTests(ID2D1DeviceContext2* ctx);
+    void GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx);				// v1.2
+    void GenerateTestPattern_BlackLevelHDRvsSDR(ID2D1DeviceContext2* ctx);		    		// v1.2
+    void GenerateTestPattern_BlackLevelCrush(ID2D1DeviceContext2* ctx);		        		// v1.2
+    void GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2* ctx);	        			// v1.2
+	void GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx);                         // v1.2
+    void GenerateTestPattern_EndOfMandatoryTests(ID2D1DeviceContext2* ctx);
     void GenerateTestPattern_FullFramePeak(ID2D1DeviceContext2* ctx);						// 3.b MAX legacy
 	void GenerateTestPattern_BlackLevelHdrCorners(ID2D1DeviceContext2* ctx);				// 4 legacy
 	void GenerateTestPattern_SharpeningFilter(ID2D1DeviceContext2* ctx);
@@ -277,7 +287,8 @@ private:
     TestPattern                                             m_cachedTest;
     bool                                                    m_shiftKey;         // whether shift key is pressed
     INT32                                                   m_currentColor;
-	INT32													m_currentProfileTile;
+    INT32                                                   m_currentBlack;     // for black crush test
+    INT32													m_currentProfileTile;
     INT32                                                   m_modeWidth;        // resolution of current mode (actually native res now)
     INT32                                                   m_modeHeight;
     float                                                   m_snoodDiam;        // outside diameter of sensor snood in mm
@@ -287,6 +298,8 @@ private:
     float                                                   m_flashOn;
     Checkerboard                                            m_checkerboard;     // for tests        5.x
     D2D1_COLOR_F                                            m_gradientColor;
+    INT32                                                   m_LocalDimmingBars;                 // v1.2 Local Dimming Contrast Test
+    INT32                                                   m_subTitleVisible;                  // v1.2 subTitle Flicker Test
     float                                                   m_gradientAnimationBase;
     bool                                                    m_showExplanatoryText;
     float                                                   m_testTimeRemainingSec;

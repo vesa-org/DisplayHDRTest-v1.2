@@ -23,11 +23,11 @@
 
 #include <winrt\Windows.Devices.Display.h>
 #include <winrt\Windows.Devices.Enumeration.h>
+#include <winrt\Windows.Foundation.h>
 
 #define BRIGHTNESS_SLIDER_FACTOR (m_rawOutDesc.MaxLuminance / m_outputDesc.MaxLuminance)
 
 //using namespace concurrency;
-
 using namespace winrt::Windows::Devices;
 using namespace winrt::Windows::Devices::Display;
 using namespace winrt::Windows::Devices::Enumeration;
@@ -68,8 +68,12 @@ void Game::ConstructorInternal()
     m_showExplanatoryText = true;
     m_gamutVolume = 0.0f;
 
+	m_currentBlack = 0;			// Which black level is crushed
+
 	m_checkerboard = Checkerboard::Cb6x4;
 	m_snoodDiam = 40.f;							// OD of sensor snood in mm
+	m_LocalDimmingBars = 1;						// v1.2 Local Dimming Contrast test
+	m_subTitleVisible = 1;						// v1.2 subTitle Flicker Test
 
 	//	These are sRGB code values for HDR10:
 	m_maxEffectivesRGBValue = -1;	// not set yet
@@ -493,7 +497,8 @@ void Game::UpdateDxgiColorimetryInfo()
 	{
 		if (device.StateFlags & DISPLAY_DEVICE_ACTIVE)
 		{
-			foundMonitor = DisplayMonitor::FromInterfaceIdAsync(device.DeviceID).get();
+			winrt::hstring hstr = winrt::to_hstring(device.DeviceID);
+			foundMonitor = DisplayMonitor::FromInterfaceIdAsync(hstr).get();
 			if (foundMonitor)
 			{
 				break;
@@ -670,7 +675,7 @@ void Game::GenerateTestPattern_StartOfTest(ID2D1DeviceContext2* ctx)
     if (m_newTestSelected) SetMetadataNeutral();
 
     text << m_appTitle;
-    text << L"\n\nVersion 1.1 Errata 2\n\n";
+    text << L"\n\nVersion 1.2 Beta 1\n\n";
     //text << L"ALT-ENTER: Toggle fullscreen: all measurements should be made in fullscreen\n";
 	text << L"->, PAGE DN:       Move to next test\n";
 	text << L"<-, PAGE UP:        Move to previous test\n";
@@ -1645,7 +1650,9 @@ void Game::GenerateTestPattern_Cooldown(ID2D1DeviceContext2 * ctx)
 #define JITTER_RADIUS 10.0f
 void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2 * ctx) //********************** 1.
 {
-    // "tone map" PQ limit of 10k nits down to panel maxLuminance in CCCS
+	auto logSize = m_deviceResources->GetLogicalSize();
+	
+	// "tone map" PQ limit of 10k nits down to panel maxLuminance in CCCS
     float nits = m_outputDesc.MaxLuminance;
     float avg = nits * 0.1f;								// 10% screen area
     if (m_newTestSelected) {
@@ -1653,14 +1660,20 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2 * ctx) //*****
 		srand(314159);										// seed the jitter rnd
 	}
 
-//	nits = 4.0;
-    float c = nitstoCCCS(nits);
-	float dpi = m_deviceResources->GetDpi();
+	// draw background/surround area
+	float backNits = nits * 0.9;
+	if (backNits > 100.f) backNits = 100.f;					// clamp to 100 max
+	float c = nitstoCCCS(backNits);
+	ComPtr<ID2D1SolidColorBrush> backBrush;
+	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &backBrush));
+	ctx->FillRectangle(&logSize, backBrush.Get());
 
+	// draw the 10% rectangle
+    c = nitstoCCCS(nits);
     ComPtr<ID2D1SolidColorBrush> peakBrush;
     DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &peakBrush));
 
-    auto logSize = m_deviceResources->GetLogicalSize();
+	float dpi = m_deviceResources->GetDpi();
 	float2 jitter;
 	float radius = JITTER_RADIUS * dpi / 96.0f;
 	do {
@@ -1676,12 +1689,48 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2 * ctx) //*****
 		(logSize.right - logSize.left) * (0.5f + sqrtf(0.1) / 2.0f) + jitter.x,
 		(logSize.bottom - logSize.top) * (0.5f + sqrtf(0.1) / 2.0f) + jitter.y
     };
+	ctx->FillRectangle(&tenPercentRect, peakBrush.Get());
 
-    ctx->FillRectangle(&tenPercentRect, peakBrush.Get());
+#if 0
+//	Not clear whether to use an image or a bitmap
+// dont know how to get teh D2D RT instaed of the D3D one (I thought they were the same)	
+// Create bitmap
+	D2D1_SIZE_U ImageSize =
+	{
+		(logSize.right - logSize.left),
+		(logSize.bottom - logSize.top)
+	};
+	ID2D1Bitmap1 *bitmap;
+	ctx->CreateBitmap(ImageSize, NULL, 0, 0, &bitmap);
+	ctx->CreateImage();
+
+		hr = m_d2dFactory->CreateHwndRenderTarget(
+			D2D1::RenderTargetProperties(),
+			D2D1::HwndRenderTargetProperties(m_window, size),
+			&m_pD2DRenderTarget
+		);
+
+	// Create a perlin noise bitmap effect
+	ID2D1Effect* noiseEffect = nullptr;
+	ctx->CreateEffect( CLSID_D2D1Turbulence, &noiseEffect);
+	noiseEffect->SetInput( 0, bitmap.Get());
+	noiseEffect->SetValue(D2D1_TURBULENCE_PROP_NOISE, D2D1_TURBULENCE_NOISE_FRACTAL_SUM);
+	noiseEffect->SetValue(D2D1_TURBULENCE_PROP_BASE_FREQUENCY, D2D1::Vector2F(0.01f, 0.01f) );
+	noiseEffect->SetValue(D2D1_TURBULENCE_PROP_NUM_OCTAVES, 1 );
+	noiseEffect->SetValue(D2D1_TURBULENCE_PROP_OFFSET, D2D1::Vector2F(0, 0));
+//	ctx->FillOpacityMask(noiseEffect, nullptr, tenPercentRect);
+
+	// Draw the effect applied to the image
+	ctx->DrawImage( noiseEffect.Get(), D2D1_INTERPOLATION_MODE_LINEAR);
+	auto renderTarget = m_deviceResources->GetRenderTargetView();  //this returns the D3D RT
+	renderTarget->DrawBitmap(noiseEffect->GetInput(), logSize);
+
+
+#endif
+
 
     if (m_showExplanatoryText)
     {
-//		float fRad = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top)*0.04f)*0.35;	// 4% screen area colorimeter box
 		float fRad = 0.5f * m_snoodDiam / 25.4f * dpi * 1.2f;      // radius of dia 40mm -> inches -> dips
 		float2 center = float2(logSize.right*0.5f, logSize.bottom*0.5f);
 
@@ -1690,7 +1739,6 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2 * ctx) //*****
 			D2D1::Point2F(center.x, center.y),
 			fRad, fRad
 		};
-
 		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 1 );
 
         std::wstringstream title;
@@ -1932,6 +1980,7 @@ void Game::GenerateTestPattern_FullFramePeak(ID2D1DeviceContext2 * ctx)	//******
     ComPtr<ID2D1SolidColorBrush> peakBrush;
     DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &peakBrush));
 
+	// fill entire screen
     ctx->FillRectangle(&m_deviceResources->GetLogicalSize(), peakBrush.Get());
 
     if (m_showExplanatoryText)
@@ -2516,7 +2565,7 @@ void Game::DrawChecker4x3n(ID2D1DeviceContext2* ctx, float colorL, float colorR 
 		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2.5f);
 
 		ctx->DrawLine(
-			D2D1::Point2F(sideWidth, height * 0.5f),										// horizontal line
+			D2D1::Point2F(sideWidth, height * 0.5f),									// horizontal line
 			D2D1::Point2F(width - sideWidth, height * 0.5f),
 			m_redBrush.Get(),
 			2
@@ -3685,6 +3734,7 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 		if (PQCodes[i] > m_maxPQCode)
 			break;
 	}
+
 	// get current intensity value to display on tile
 	UINT PQCode = PQCodes[m_currentProfileTile];
 	if (PQCode > m_maxPQCode) PQCode = m_maxPQCode;				// clamp to max reported possible
@@ -3719,14 +3769,16 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 
 	if (m_showExplanatoryText)
 	{
-		float fRad = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top) * 0.04f);	// 4% screen area colorimeter box
+		float dpi = m_deviceResources->GetDpi();
+
+//		float fRad = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top)*0.04f)*0.35;	// 4% screen area colorimeter box
+		float fRad = 0.5f * m_snoodDiam / 25.4f * dpi * 1.2f;      // radius of dia 27mm -> inches -> dips
 		float2 center = float2(logSize.right * 0.5f, logSize.bottom * 0.5f);
 
 		D2D1_ELLIPSE ellipse =
 		{
 			D2D1::Point2F(center.x, center.y),
-			fRad * 0.35f,						// TODO: make target diameter 27mm using DPI data
-			fRad * 0.35f
+			fRad, fRad
 		};
 
 		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 1 );
@@ -3774,6 +3826,494 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 	m_newTestSelected = false;
 
 }
+
+void Game::GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx)				// v1.2.1
+{
+	ComPtr<ID2D1SolidColorBrush> barBrush;								// for white bars
+
+	// Compute box intensity based on EDID
+	float nits = m_outputDesc.MaxLuminance;
+	float avg = nits * 0.70f;        // 70% screen area
+
+	if (m_newTestSelected)
+		SetMetadata(nits, avg, GAMUT_Native);
+
+	float c = nitstoCCCS(nits);
+	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &barBrush));
+
+	// define the white bars
+	auto logSize = m_deviceResources->GetLogicalSize();
+	float fSizeW = (logSize.right - logSize.left) * 0.15f;				// bar is 15% screen width
+	D2D1_RECT_F leftRect =
+	{
+		logSize.left,				// xmin
+		logSize.top,				// ymin
+		logSize.left + fSizeW,		// xmax
+		logSize.bottom,				// ymax
+	};
+
+	D2D1_RECT_F rightRect =
+	{
+		logSize.right - fSizeW,		// xmin
+		logSize.top,				// ymin
+		logSize.right,				// xmax
+		logSize.bottom				// ymax
+	};
+
+	float fSizeH = (logSize.bottom - logSize.top) * 0.15f;				// bar is 15% screen height
+	D2D1_RECT_F topRect =
+	{
+		logSize.left,				// xmin
+		logSize.top,				// ymin
+		logSize.right,				// xmax
+		logSize.top + fSizeH,		// ymax
+	};
+
+	D2D1_RECT_F bottomRect =
+	{
+		logSize.left,				// xmin
+		logSize.bottom - fSizeH,	// ymin
+		logSize.right,				// xmax
+		logSize.bottom				// ymax
+	};
+
+	switch (m_LocalDimmingBars)
+	{
+	case 0:		// draw no bars
+		break;
+	case 1:
+		ctx->FillRectangle(&leftRect, barBrush.Get());				// vertical side bars
+		ctx->FillRectangle(&rightRect, barBrush.Get());
+		break;
+	case 2:
+		ctx->FillRectangle(&topRect, barBrush.Get());				// horizontal bars top&bottom
+		ctx->FillRectangle(&bottomRect, barBrush.Get());
+		break;
+	case 3:
+		ctx->FillRectangle(&leftRect, barBrush.Get());				// all 4 bars on
+		ctx->FillRectangle(&rightRect, barBrush.Get());
+		ctx->FillRectangle(&topRect,  barBrush.Get());
+		ctx->FillRectangle(&bottomRect, barBrush.Get());
+		break;
+	}
+
+	// Everything below this point should be hidden for actual measurements.
+	if (m_showExplanatoryText)
+	{
+		float dpi = m_deviceResources->GetDpi();
+
+		float fRad = 0.5f * m_snoodDiam / 25.4f * dpi * 1.2f;      // radius of dia 27mm -> inches -> dips
+		float2 center = float2(logSize.right * 0.5f, logSize.bottom * 0.5f);
+
+		D2D1_ELLIPSE ellipse =										// TODO probably have to move these to top and bottom in some cases
+		{
+			D2D1::Point2F(center.x, center.y),
+			fRad, fRad
+		};
+		ctx->DrawEllipse(&ellipse, m_redBrush.Get());
+
+		ellipse =
+		{
+			D2D1::Point2F(logSize.right*0.1f, center.y),
+			fRad, fRad
+		};
+		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2.f);
+
+		ellipse =
+		{
+			D2D1::Point2F(logSize.right*0.9f, center.y),
+			fRad, fRad
+		};
+		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2.f );
+
+		ellipse =
+		{
+			D2D1::Point2F(center.x, logSize.bottom*0.9f),
+			fRad, fRad
+		};
+		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2.f );
+
+		ellipse =
+		{
+			D2D1::Point2F(center.x, logSize.bottom*0.1f),
+			fRad, fRad
+		};
+		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2.f );
+
+		std::wstringstream title;
+		title << fixed << setw(8) << setprecision(2);
+
+		title << L"   Contrast test for Local Dimming";
+		title << L"\nNits: ";
+		title << nits * BRIGHTNESS_SLIDER_FACTOR;
+		title << L"  HDR10: ";
+		title << setprecision(0);
+		title << Apply2084(c * 80.f * BRIGHTNESS_SLIDER_FACTOR / 10000.f) * 1023.f;
+		title << L"\n" << m_hideTextString;
+
+		// Shift title text to the right to avoid the corner.
+		D2D1_RECT_F textRect = m_testTitleRect;
+		RenderText(ctx, m_largeFormat.Get(), title.str(), textRect);
+
+		PrintMetadata(ctx);
+	}
+	m_newTestSelected = false;
+
+}
+void Game::GenerateTestPattern_BlackLevelHDRvsSDR(ID2D1DeviceContext2* ctx)			   		// v1.2.2
+{
+	// Renders 10,000 nits. This is 125.0f CCCS or 1024 HDR10.
+	ComPtr<ID2D1SolidColorBrush> leftBrush;
+
+	// Compute box intensity based on EDID
+	float nits = 200;
+	float avg = nits * 0.5f;                // 50% screen area
+	if (m_newTestSelected)
+		SetMetadata( m_outputDesc.MaxLuminance, avg, GAMUT_Native);
+
+	float c = nitstoCCCS(nits);
+	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &leftBrush));
+
+	auto logSize = m_deviceResources->GetLogicalSize();
+	D2D1_RECT_F leftRect =
+	{
+		logSize.left,
+		logSize.top,
+		logSize.right*0.5f,
+		logSize.bottom
+	};
+	ctx->FillRectangle(&leftRect, leftBrush.Get());
+
+
+	// Everything below this point should be hidden for actual measurements.
+	if (m_showExplanatoryText)
+	{
+		float dpi = m_deviceResources->GetDpi();
+		float fRad = 0.5 * m_snoodDiam / 25.4 * dpi * 1.2;      // radius of dia 27mm -> inches -> dips
+
+		float2 center = float2(logSize.right * 0.5f, logSize.bottom * 0.5f);
+
+		D2D1_ELLIPSE ellipse =
+		{
+			D2D1::Point2F(logSize.right*0.25f, center.y),
+			fRad, fRad
+		};
+		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2.f);
+		ellipse =
+		{
+			D2D1::Point2F(logSize.right * 0.75f, center.y),
+			fRad, fRad
+		};
+		ctx->DrawEllipse(&ellipse, m_redBrush.Get());
+
+
+		std::wstringstream title;
+		title << fixed << setw(8) << setprecision(2);
+
+		title << L"   Black Level in HDR vs SDR";
+		title << L"\nNits: ";
+		title << nits * BRIGHTNESS_SLIDER_FACTOR;
+		title << L"  HDR10: ";
+		title << setprecision(0);
+		title << Apply2084(c * 80.f * BRIGHTNESS_SLIDER_FACTOR / 10000.f) * 1023.f;
+		title << L"\n" << m_hideTextString;
+
+		// Shift title text to the right to avoid the corner.
+		D2D1_RECT_F textRect = m_testTitleRect;
+		RenderText(ctx, m_largeFormat.Get(), title.str(), textRect);
+
+		PrintMetadata(ctx);
+	}
+	m_newTestSelected = false;
+}
+
+void Game::GenerateTestPattern_BlackLevelCrush(ID2D1DeviceContext2* ctx)		       		// v1.2.3
+{
+	float nitsList[] = { 0.5f, 0.3f, 0.1f, 0.05f, 0.0f };
+	float nits = nitsList[m_currentBlack];
+
+	if (m_newTestSelected)
+		SetMetadata(m_outputDesc.MaxLuminance, nits, GAMUT_Native);
+
+	// Get fp16 color of this nit level
+	float c = nitstoCCCS(nits) / BRIGHTNESS_SLIDER_FACTOR;
+
+	// get a brush of that color
+	ComPtr<ID2D1SolidColorBrush> darkBrush;
+	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &darkBrush));
+
+	// get entire screen rect and fill it
+	auto logSize = m_deviceResources->GetLogicalSize();
+	ctx->FillRectangle(&logSize, darkBrush.Get());
+
+	if (m_showExplanatoryText)
+	{
+		std::wstringstream title;
+		title << L"   Black Level Crush Test: ";
+		title << fixed << setw(8) << setprecision(2);
+		title << L"\nNits: ";
+		title << nits;
+		title << L"  HDR10: ";
+		title << setprecision(0);
+		title << Apply2084(c * 80.f / 10000.f) * 1023.f;
+		title << L"\n" << m_hideTextString;
+
+		RenderText(ctx, m_largeFormat.Get(), title.str(), m_testTitleRect);
+
+		PrintMetadata(ctx);
+	}
+	m_newTestSelected = false;
+}
+
+void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	        		// v1.2.4
+{
+	// the background surround
+	float nits = 5.0f;		// background gray
+	float c = nitstoCCCS(nits) / BRIGHTNESS_SLIDER_FACTOR;
+	ComPtr<ID2D1SolidColorBrush> grayBrush;
+	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &grayBrush));
+
+	float avg = nits * 1.1;
+	if (m_newTestSelected)
+		SetMetadata(m_outputDesc.MaxLuminance, avg, GAMUT_Native);
+
+	// get bounds of entire window
+	auto logSize = m_deviceResources->GetLogicalSize();
+	ctx->FillRectangle(&logSize, grayBrush.Get());
+
+	// the center patch
+	nits = 10.0f;			// dark gray
+	c = nitstoCCCS(nits) / BRIGHTNESS_SLIDER_FACTOR;
+	ComPtr<ID2D1SolidColorBrush> patchBrush;
+	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &patchBrush));
+
+	D2D1_RECT_F patchRect =
+	{
+		(logSize.right - logSize.left) * (0.5f - sqrtf(0.1) / 2.0f),
+		(logSize.bottom - logSize.top) * (0.5f - sqrtf(0.1) / 2.0f),
+		(logSize.right - logSize.left) * (0.5f + sqrtf(0.1) / 2.0f),
+		(logSize.bottom - logSize.top) * (0.5f + sqrtf(0.1) / 2.0f)
+	};
+	ctx->FillRectangle( &patchRect, patchBrush.Get() );
+
+	if (m_subTitleVisible & 0x01)
+	{
+		// set the sub title color
+		nits = 200.0f;			// bright white
+		c = nitstoCCCS(nits) / BRIGHTNESS_SLIDER_FACTOR;
+
+		ComPtr<ID2D1SolidColorBrush> subTitleBrush;
+		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &subTitleBrush));
+
+		std::wstring subTitle = L"This is a sub-title text string";
+		float ctrx = (logSize.right + logSize.left) * 0.5f;
+		D2D1_RECT_F subTitleRect =
+		{
+			ctrx - 400.0f, logSize.bottom - 150.f,
+			ctrx + 600.0f, logSize.bottom
+		};
+
+		// create the text format
+		Microsoft::WRL::ComPtr<IDWriteTextFormat> subTitleFormat;
+		auto dwFactory = m_deviceResources->GetDWriteFactory();
+		DX::ThrowIfFailed(dwFactory->CreateTextFormat(
+			L"Segoe UI",
+			nullptr,
+			DWRITE_FONT_WEIGHT_NORMAL,
+			DWRITE_FONT_STYLE_NORMAL,
+			DWRITE_FONT_STRETCH_NORMAL,
+			64.0f,
+			L"en-US",
+			&subTitleFormat));
+		
+		// define a text layout
+		ComPtr<IDWriteTextLayout> layout;
+		DX::ThrowIfFailed(dwFactory->CreateTextLayout(
+			subTitle.c_str(),
+			(unsigned int)subTitle.length(),
+			subTitleFormat.Get(),
+			subTitleRect.right,
+			subTitleRect.bottom,
+			&layout));
+
+		// draw the subtitle with a black dropshadow underneath
+		ctx->DrawTextLayout(D2D1::Point2F(subTitleRect.left + 1, subTitleRect.top + 1.), layout.Get(), m_blackBrush.Get());
+		ctx->DrawTextLayout(D2D1::Point2F(subTitleRect.left    , subTitleRect.top)     , layout.Get(), subTitleBrush.Get());
+	}
+
+	if (m_showExplanatoryText)
+	{
+		std::wstringstream title;
+		title << L"   Subtitle Flicker Test: ";
+		title << fixed << setw(8) << setprecision(2);
+		title << L"\nNits: ";
+		title << nits;
+		title << L"  HDR10: ";
+		title << setprecision(0);
+		title << Apply2084(c * 80.f / 10000.f) * 1023.f;
+		title << L"\n" << m_hideTextString;
+
+		RenderText(ctx, m_largeFormat.Get(), title.str(), m_testTitleRect);
+
+		PrintMetadata(ctx);
+	}
+
+	m_newTestSelected = false;
+}
+
+void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.2.5
+{
+#define NXRITECOLORS 150
+	uint PQCodes[NXRITECOLORS] =
+	{
+		1023,
+		0,
+		8,
+		16,
+		24,
+		36,
+		48,
+		56,
+		64,
+		120,
+		156,
+		256,
+		340,
+		384,
+		452,
+		488,
+		520,
+		592,
+		616,
+		636,
+		660,
+		664,
+		668,
+		692,
+		704,
+		708,
+		712,
+		728,
+		744,
+		756,
+		760,
+		764,
+		768,
+		788,
+		804,
+		808,
+		812,
+		828,
+		840,
+		844,
+		872,
+		892,
+		920,
+		1023
+	};
+
+	if (m_newTestSelected)
+	{
+		SetMetadata(m_outputDesc.MaxLuminance, m_outputDesc.MaxLuminance * 0.10f, GAMUT_Native);
+		srand(318179);								// seed the jitter
+	}
+
+	// find the brightest tile we need to test on this panel
+	for (int i = 3; i < NPQCODES; i++)
+	{
+		m_maxProfileTile = i;
+		if (PQCodes[i] > m_maxPQCode)
+			break;
+	}
+	// get current intensity value to display on tile
+	UINT PQCode = PQCodes[m_currentProfileTile];
+	if (PQCode > m_maxPQCode) PQCode = m_maxPQCode;				// clamp to max reported possible
+
+	float nits = Remove2084(PQCode / 1023.0f) * 10000.0f;		// go to linear space
+	float c = nitstoCCCS(nits / BRIGHTNESS_SLIDER_FACTOR);		// scale by 80 and slider
+
+	ComPtr<ID2D1SolidColorBrush> peakBrush;
+	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &peakBrush));
+
+	float dpi = m_deviceResources->GetDpi();
+	auto logSize = m_deviceResources->GetLogicalSize();
+
+	float2 jitter;
+	float radius = JITTER_RADIUS * dpi / 96.0f;
+
+	do {
+		jitter.x = radius * (randf() * 2.f - 1.f);
+		jitter.y = radius * (randf() * 2.f - 1.f);
+	} while ((jitter.x * jitter.x + jitter.y * jitter.y) > radius);
+
+	D2D1_RECT_F tenPercentRect =
+	{
+		(logSize.right - logSize.left) * (0.5f - sqrtf(0.1) / 2.0f) + jitter.x,
+		(logSize.bottom - logSize.top) * (0.5f - sqrtf(0.1) / 2.0f) + jitter.y,
+		(logSize.right - logSize.left) * (0.5f + sqrtf(0.1) / 2.0f) + jitter.x,
+		(logSize.bottom - logSize.top) * (0.5f + sqrtf(0.1) / 2.0f) + jitter.y
+	};
+	ctx->FillRectangle(&tenPercentRect, peakBrush.Get());
+
+	float PQcheck = Apply2084(c * 80.f * BRIGHTNESS_SLIDER_FACTOR / 10000.f) * 1023.f;
+
+	if (m_showExplanatoryText)
+	{
+		float fRad = 0.5 * m_snoodDiam / 25.4 * dpi * 1.2;      // radius of dia 27mm -> inches -> dips
+		float2 center = float2(logSize.right * 0.5f, logSize.bottom * 0.5f);
+
+		D2D1_ELLIPSE ellipse =
+		{
+			D2D1::Point2F(center.x, center.y),
+			fRad, fRad						// TODO: make target diameter 27mm using DPI data
+		};
+
+		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 1);
+
+		std::wstringstream title;
+		title << fixed << setw(8) << setprecision(0);
+
+		title << L"   X-Rite Colors\n";
+		title << L"Subtest#: ";
+		title << m_currentProfileTile;
+		title << L"   HDR10: ";
+		title << PQCode;
+		title << L"   Nits: ";
+		title << setprecision(4) << nits;
+		//		title << L"   HDR10b: ";
+		//		title << setprecision(4) << PQcheck;		// echo input to validate precision
+		title << L"\n";
+		title << m_hideTextString;
+
+		RenderText(ctx, m_largeFormat.Get(), title.str(), m_testTitleRect);
+
+		PrintMetadata(ctx);
+	}
+
+#if 0
+	std::wstringstream title;
+	title << L"3.b Full-frame white for 30 minutes: ";
+	if (0.0f != m_testTimeRemainingSec)
+	{
+		title << static_cast<unsigned int>(m_testTimeRemainingSec);
+		title << L" seconds remaining";
+		title << L"\nRenders HDR10 max (10,000 nits)";
+		title << L"\nNits: ";
+		title << nits;
+		title << L"  HDR10: ";
+		title << static_cast<unsigned int>(Apply2084(c * 80.f / 10000.f) * 1023);
+		title << L"\n" << m_hideTextString;
+	}
+	else
+	{
+		title << L" done.";
+	}
+	RenderText(ctx, m_largeFormat.Get(), title.str(), m_testTitleRect, true);
+#endif
+	m_newTestSelected = false;
+
+}
+
 
 void Game::GenerateTestPattern_EndOfMandatoryTests(ID2D1DeviceContext2 * ctx)
 {
@@ -3913,7 +4453,7 @@ void Game::GenerateTestPattern_ToneMapSpike(ID2D1DeviceContext2 * ctx)
         rsc.d2dEffect->SetValueByName(L"Center", center);
         rsc.d2dEffect->SetValueByName(L"InitialWavelength", init);
         rsc.d2dEffect->SetValueByName(L"WavelengthHalvingDistance", dist);
-        rsc.d2dEffect->SetValueByName(L"WhiteLevelMultiplier", nits);
+        rsc.d2dEffect->SetValueByName(L"WhiteLevelMultiplier", nitstoCCCS(nits));
 
         ctx->DrawImage(rsc.d2dEffect.Get());
     }
@@ -4279,7 +4819,22 @@ void Game::Render()
 	case TestPattern::ProfileCurve:										// 9.
 		GenerateTestPattern_ProfileCurve(ctx);
 		break;
-	case TestPattern::EndOfMandatoryTests:								// 
+	case TestPattern::LocalDimmingContrast:								// v1.2   Four new tests for v1.2
+		GenerateTestPattern_LocalDimmingContrast(ctx);
+		break;
+	case TestPattern::BlackLevelHDRvsSDR:								// B
+		GenerateTestPattern_BlackLevelHDRvsSDR(ctx);
+		break;
+	case TestPattern::BlackLevelCrush:									// C
+		GenerateTestPattern_BlackLevelCrush(ctx);
+		break;
+	case TestPattern::SubTitleFlicker:									// D
+		GenerateTestPattern_SubTitleFlicker(ctx);
+		break;
+	case TestPattern::XRiteColors:										// v1.2 
+		GenerateTestPattern_XRiteColors(ctx);
+		break;
+	case TestPattern::EndOfMandatoryTests:								// Marker for end of mandatory tests
         GenerateTestPattern_EndOfMandatoryTests(ctx);
         break;
     case TestPattern::SharpeningFilter:									// Sine Sweep Effect
@@ -4856,6 +5411,28 @@ void Game::ChangeSubtest( INT32 increment )
 		m_currentProfileTile += increment;
 		m_currentProfileTile = wrap(m_currentProfileTile, 0, m_maxProfileTile);
 		break;
+
+	// 5 new tests for v1.2								// TODO
+	case TestPattern::LocalDimmingContrast:				// swtich white bars based on tier
+		m_LocalDimmingBars -= increment;
+		m_LocalDimmingBars = wrap(m_LocalDimmingBars, 0., 3.);	// Just wrap on each end <inclusive!>
+		break;
+
+	case TestPattern::BlackLevelHDRvsSDR:				// No UI change - just be clear on SDR vs HDR in text
+		break;
+
+	case TestPattern::BlackLevelCrush:					// rotate through 4 fulllscreen background colors
+		m_currentBlack -= increment;
+		m_currentBlack = wrap(m_currentBlack, 0., 4.);	// Just wrap on each end <inclusive!>
+		break;
+
+	case TestPattern::SubTitleFlicker:					// turn subtitle text on/off
+		m_subTitleVisible -= increment;                 // v1.2 subTitle Flicker Test
+		break;
+
+	case TestPattern::XRiteColors:						// cycle through the official Xrite patch colors
+		break;
+
 	}
 }
 
