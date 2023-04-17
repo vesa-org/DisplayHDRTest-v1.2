@@ -10,6 +10,7 @@
 //*********************************************************
 
 #pragma once
+#define _CRT_RAND_S
 
 // Target latest OS/SDK
 #include <SDKDDKVer.h>
