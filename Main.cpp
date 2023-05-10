@@ -369,11 +369,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			break;
 
         case 0x41: // 'a'
-            game->ChangeGradientColor(-0.05f, -0.05f, -0.05f);
+            game->ToggleXRitePatchAuto();
+//          game->ChangeGradientColor(-0.05f, -0.05f, -0.05f);
             break;
 
         case 0x53: // 's'
-            game->ChangeGradientColor(0.05f, 0.05f, 0.05f);
+  //        game->ChangeGradientColor(0.05f, 0.05f, 0.05f);
             break;
 
         case VK_OEM_PERIOD:

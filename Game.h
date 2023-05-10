@@ -162,6 +162,7 @@ public:
     void ChangeTestPattern(bool increment);
     void ChangeSubtest( INT32 increment );
     void SetShift( bool shift );
+    void ToggleXRitePatchAuto( void );
     void StartTestPattern(void);
     void ChangeGradientColor(float deltaR, float deltaG, float deltaB);
     void ChangeBackBufferFormat(DXGI_FORMAT fmt);
@@ -299,7 +300,11 @@ private:
     Checkerboard                                            m_checkerboard;     // for tests        5.x
     D2D1_COLOR_F                                            m_gradientColor;
     INT32                                                   m_LocalDimmingBars;                 // v1.2 Local Dimming Contrast Test
-    INT32                                                   m_subTitleVisible;                  // v1.2 subTitle Flicker Test
+    INT32                                                   m_subTitleVisible;                  // v1.4 subTitle Flicker Test
+    INT32                                                   m_currentXRiteIndex;                // v1.5 XRite Color Patch
+    bool                                                    m_XRitePatchAutoMode;               // v1.5 flag for when it auto animates
+    float                                                   m_XRitePatchDisplayTime;            // how long to show XRite color patch in auto mode
+//  float                                                   m_XRitePatchTimer;                  // timer for tracking above
     float                                                   m_gradientAnimationBase;
     bool                                                    m_showExplanatoryText;
     float                                                   m_testTimeRemainingSec;

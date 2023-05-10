@@ -27,6 +27,138 @@
 
 #define BRIGHTNESS_SLIDER_FACTOR (m_rawOutDesc.MaxLuminance / m_outputDesc.MaxLuminance)
 
+#define NUMXRITECOLORS (95.f)
+struct XriteColors		// provided courtesy of Portrait X-Rite calibration technology
+{
+	int num;
+	int row;
+	char col;
+	UINT32 RGB;
+	float  R, G, B;		// for 100 nit D65 white point in 2020 gamut primaries
+	double X, Y, Z;		// (CIE 1931 2ø)
+} XRite[] = {
+//n row col    RRGGBB      R          G           B         X             Y             Z
+  1, 1, 'A', 0xF4F6F3,  0.498834, 0.499625, 0.497344,  86.533211290, 91.585525820, 97.878649400,
+  2, 1, 'B', 0x818181,  0.364688, 0.364859, 0.365180,  20.792432080, 21.884200640, 23.925671570,
+  3, 1, 'C', 0x3C3C3B,  0.240312, 0.240033, 0.239499,   4.256057219,  4.474643989,  4.833733497,
+ 16, 2, 'B', 0x933E6E,  0.359104, 0.268128, 0.332106,  16.526303580, 10.753371090, 16.008163310,
+ 17, 2, 'C', 0x55445F,  0.283570, 0.261789, 0.306806,   7.899895441,  6.898727382, 11.774254880,
+ 18, 2, 'D', 0xCCD6E3,  0.462816, 0.468296, 0.480466,  62.735330580, 66.451241440, 82.240083590,
+ 19, 2, 'E', 0x765446,  0.330253, 0.294836, 0.267084,  11.750768390, 10.590861790,  7.186192248,
+ 20, 2, 'F', 0xC59482,  0.431643, 0.396995, 0.371157,  37.583017980, 34.669699420, 25.836393250,
+ 21, 2, 'G', 0x5F7B9D,  0.333089, 0.353966, 0.399236,  17.837678130, 18.961502280, 34.681355200,
+ 22, 2, 'H', 0x5A6E42,  0.313280, 0.333256, 0.266624,  10.832807340, 13.750247450,  7.303778533,
+ 23, 2, 'I', 0x8280AF,  0.369187, 0.365089, 0.420534,  24.670403040, 23.327084940, 43.628533060,
+ 24, 2, 'J', 0x65BEAD,  0.383048, 0.437697, 0.423882,  31.263243540, 42.546305730, 45.948413660,
+ 25, 2, 'K', 0xF2CFB8,  0.483620, 0.464457, 0.440228,  67.553141900, 67.104629060, 54.824288420,
+ 26, 2, 'L', 0x6E3D46,  0.311767, 0.254055, 0.263454,   9.248634896,  7.123491009,  6.742289138,
+ 27, 2, 'M', 0xBC3F64,  0.403831, 0.284703, 0.318748,  24.886900670, 15.231543150, 13.686284150,
+ 30, 3, 'B', 0xB88BB9,  0.420486, 0.384844, 0.433509,  37.638886490, 32.008638080, 50.160484400,
+ 31, 3, 'C', 0x7266A6,  0.341450, 0.326192, 0.408593,  18.644913870, 15.907477420, 38.201392190,
+ 32, 3, 'D', 0xEFCDD6,  0.482344, 0.462548, 0.468715,  69.637304040, 67.011486060, 73.044700990,
+ 33, 3, 'E', 0xDF7F33,  0.446294, 0.375568, 0.261945,  38.524340580, 31.114525100,  7.148722041,
+ 34, 3, 'F', 0x4B5EAB,  0.298593, 0.308490, 0.413195,  14.222416490, 12.384797420, 40.058298340,
+ 35, 3, 'G', 0xC35561,  0.413632, 0.315869, 0.317071,  27.841684530, 18.923019180, 13.524133140,
+ 36, 3, 'H', 0x5C3F6B,  0.291663, 0.253529, 0.325210,   8.848467026,  6.856047893, 14.710645450,
+ 37, 3, 'I', 0xA1BE44,  0.417937, 0.439934, 0.302363,  34.063394940, 44.746591560, 12.372120840,
+ 38, 3, 'J', 0xE2A22D,  0.456973, 0.415694, 0.269431,  44.613171700, 42.127022240,  8.225577179,
+ 39, 3, 'K', 0xC6EBD5,  0.466355, 0.486926, 0.469523,  64.899359280, 76.071553550, 74.137955910,
+ 40, 3, 'L', 0xCA3C3C,  0.416690, 0.285280, 0.254187,  26.901992700, 16.175839940,  6.031991297,
+ 41, 3, 'M', 0x603C50,  0.293062, 0.247799, 0.280432,   7.891606323,  6.263674361,  8.412485400,
+ 44, 4, 'B', 0x7C3B91,  0.334272, 0.257589, 0.380366,  14.984765510,  9.453061058, 27.850117650,
+ 45, 4, 'C', 0x324A74,  0.247897, 0.269742, 0.338992,   6.899378575,  6.859692772, 17.368376520,
+ 46, 4, 'D', 0xB0E0D5,  0.448749, 0.475551, 0.468542,  56.546648740, 67.176637550, 73.170544650,
+ 47, 4, 'E', 0x364191,  0.251805, 0.254680, 0.380224,   8.563477857,  6.664989920, 27.799448970,
+ 48, 4, 'F', 0x47974B,  0.329089, 0.389127, 0.292306,  14.858863500, 23.829750370, 10.461868100,
+ 49, 4, 'G', 0xB3323E,  0.391908, 0.262092, 0.253351,  20.698947040, 12.250337220,  5.902634969,
+ 50, 4, 'H', 0xEBC821,  0.474327, 0.455687, 0.280104,  55.123904260, 58.969821910,  9.885304636,
+ 51, 4, 'I', 0xBF5696,  0.411869, 0.317747, 0.390308,  30.256590580, 19.922766010, 31.288718640,
+ 52, 4, 'J', 0x008AA9,  0.288986, 0.371841, 0.414080,  15.367801500, 20.604087770, 40.791705610,
+ 53, 4, 'K', 0xDBD3E0,  0.471163, 0.466250, 0.478069,  65.832282760, 66.887123200, 80.264910000,
+ 54, 4, 'L', 0xCF8295,  0.435661, 0.376770, 0.392828,  39.022037260, 31.281204360, 32.516169310,
+ 55, 4, 'M', 0xBD3749,  0.402886, 0.273609, 0.274269,  23.574967010, 14.052860450,  7.823662074,
+ 58, 5, 'B', 0x1589CC,  0.309459, 0.371737, 0.451158,  20.087209920, 22.344742210, 60.110134410,
+ 59, 5, 'C', 0x55A2CB,  0.358090, 0.406097, 0.452458,  27.505824980, 32.203205660, 61.229380280,
+ 60, 5, 'D', 0xF1CECA,  0.483452, 0.463290, 0.457837,  69.059715320, 67.146317300, 65.498748310,
+ 62, 5, 'F', 0xC8C8C9,  0.454365, 0.454102, 0.454591,  55.059386940, 57.830193630, 63.228199920,
+ 63, 5, 'G', 0xA3A4A5,  0.411982, 0.412326, 0.413178,  35.241397610, 37.093821930, 40.779328730,
+ 65, 5, 'I', 0x626262,  0.315105, 0.315390, 0.316092,  11.556000200, 12.163244770, 13.364081910,
+ 66, 5, 'J', 0x434445,  0.257156, 0.258030, 0.260185,   5.464348778,  5.756852478,  6.462477420,
+ 67, 5, 'K', 0xB4DCE2,  0.450069, 0.472251, 0.479783,  58.061821080, 66.239982950, 81.760975930,
+ 68, 5, 'L', 0xD58482,  0.441048, 0.379923, 0.370181,  39.789279170, 32.226929400, 25.408667110,
+ 69, 5, 'M', 0xE74D48,  0.445733, 0.317605, 0.280531,  36.849623790, 22.849407730,  8.634066840,
+ 72, 6, 'B', 0x32A8C3,  0.344687, 0.411823, 0.444856,  25.228780790, 32.684552730, 56.694721920,
+ 73, 6, 'C', 0x284E5F,  0.238055, 0.276002, 0.307405,   5.692425950,  6.780516852, 11.897590810,
+ 74, 6, 'D', 0xCFDAA5,  0.463829, 0.471380, 0.421437,  57.590018830, 66.018199150, 45.368799830,
+ 76, 6, 'F', 0x59595A,  0.299838, 0.300238, 0.301483,   9.564253689, 10.064608710, 11.134841100,
+ 77, 6, 'G', 0x6A6B6B,  0.330352, 0.330736, 0.331527,  13.923263050, 14.660007630, 16.124553600,
+ 78, 6, 'H', 0x989899,  0.397295, 0.397368, 0.398364,  30.004027410, 31.537344570, 34.699049160,
+ 79, 6, 'I', 0xBDBDBE,  0.442224, 0.442057, 0.442609,  48.525018480, 50.982961880, 55.792765100,
+ 80, 6, 'J', 0xE0E1E1,  0.479188, 0.479766, 0.480139,  71.247395410, 75.107046350, 82.206832430,
+ 81, 6, 'K', 0xB2B2B3,  0.429090, 0.429287, 0.430159,  42.317392640, 44.512028860, 48.915528100,
+ 82, 6, 'L', 0xF4752D,  0.462019, 0.368007, 0.253055,  44.131007750, 32.177121340,  6.344859403,
+ 83, 6, 'M', 0xFFBC31,  0.493019, 0.447417, 0.290890,  64.079413780, 59.655086600, 10.992190490,
+ 86, 7, 'B', 0x2B4F4F,  0.240023, 0.277619, 0.279228,   5.230441806,  6.723176467,  8.352868857,
+ 87, 7, 'C', 0x759ECF,  0.376705, 0.402414, 0.456569,  30.780046770, 32.682966400, 63.818882210,
+ 88, 7, 'D', 0xD38866,  0.439892, 0.384637, 0.334056,  38.254848490, 32.547350950, 16.965111700,
+ 89, 7, 'E', 0xECB49B,  0.471569, 0.436637, 0.406738,  56.916514990, 52.865360010, 38.407424560,
+ 90, 7, 'F', 0xBE9778,  0.427175, 0.399974, 0.358764,  35.859866060, 34.637042750, 22.564393980,
+ 91, 7, 'G', 0x916A50,  0.368336, 0.334573, 0.291096,  18.242782700, 16.929283660,  9.935993265,
+ 92, 7, 'H', 0xC6A18E,  0.437239, 0.411973, 0.388115,  40.995412260, 39.472809370, 31.230776140,
+ 93, 7, 'I', 0xA16645,  0.383626, 0.330956, 0.272423,  20.552375850, 17.498776050,  7.850930456,
+ 94, 7, 'J', 0xD09078,  0.439537, 0.393557, 0.357762,  39.377642320, 34.722317270, 22.252946180,
+ 95, 7, 'K', 0x777777,  0.350299, 0.350419, 0.350463,  17.591371710, 18.517812990, 20.183763000,
+ 96, 7, 'L', 0xC1BA0C,  0.439649, 0.437897, 0.254956,  39.620944430, 46.434482250,  7.229951406,
+ 97, 7, 'M', 0xF4C904,  0.480913, 0.457776, 0.269437,  58.281188360, 61.077446520,  8.830551879,
+100, 8, 'B', 0x18ABAB,  0.336325, 0.414111, 0.419404,  22.226046050, 32.146142550, 43.556240210,
+101, 8, 'C', 0x009690,  0.291845, 0.387396, 0.385725,  14.523757570, 23.159776430, 30.192359560,
+102, 8, 'D', 0xC89684,  0.434688, 0.399257, 0.374270,  38.792469530, 35.648401980, 26.754607140,
+103, 8, 'E', 0xF0A591,  0.470462, 0.421585, 0.393360,  54.585824170, 47.552870650, 33.151261110,
+104, 8, 'F', 0xBF9A88,  0.429034, 0.402877, 0.379152,  37.466446930, 35.892141540, 28.254225400,
+105, 8, 'G', 0xC19989,  0.430383, 0.401702, 0.379994,  37.854159750, 35.785057360, 28.501861920,
+106, 8, 'H', 0xC39986,  0.432243, 0.402706, 0.376863,  38.326792330, 36.215167020, 27.557513300,
+107, 8, 'I', 0x7D5A45,  0.340984, 0.306668, 0.267055,  13.240071880, 12.144334740,  7.226119588,
+108, 8, 'J', 0xD29879,  0.443156, 0.402747, 0.361315,  41.209678110, 37.455523660, 23.238538180,
+109, 8, 'K', 0x494A4A,  0.269673, 0.269785, 0.271010,   6.443906197,  6.770644576,  7.488444555,
+110, 8, 'L', 0xB39A45,  0.417464, 0.401490, 0.291054,  31.266612070, 33.197161740, 10.425517790,
+111, 8, 'M', 0xB1BA2C,  0.427692, 0.436537, 0.275347,  36.057458440, 44.517234190,  9.083313607,
+114, 9, 'B', 0x4D4841,  0.272895, 0.267784, 0.253529,   6.360790471,  6.640126351,  5.930663147,
+115, 9, 'C', 0x58AB77,  0.358377, 0.414806, 0.358557,  21.892603240, 32.388512910, 22.671978430,
+116, 9, 'D', 0x00966B,  0.303113, 0.387440, 0.337556,  13.423201510, 22.836472970, 17.680583050,
+117, 9, 'E', 0x345044,  0.248617, 0.279043, 0.259748,   5.323550029,  6.868151643,  6.477754156,
+118, 9, 'F', 0x3EAB89,  0.345338, 0.414493, 0.380557,  21.027393740, 31.892228140, 28.814915220,
+119, 9, 'G', 0x79A759,  0.377192, 0.411624, 0.317874,  23.485085090, 32.329292180, 14.345078770,
+120, 9, 'H', 0x39953E,  0.318414, 0.386510, 0.273172,  13.282935450, 22.690171490,  8.297622316,
+121, 9, 'I', 0x49B14F,  0.352433, 0.421254, 0.306759,  19.833708900, 33.329363180, 12.744002250,
+122, 9, 'J', 0xC3904F,  0.427704, 0.391774, 0.302679,  33.918413780, 32.207291480, 11.849344930,
+123, 9, 'K', 0x9AA348,  0.400663, 0.409218, 0.295429,  27.607046040, 33.474874880, 11.055671170,
+124, 9, 'L', 0xA0C132,  0.418941, 0.443273, 0.283704,  34.220708820, 45.934211170, 10.083474300,
+125, 9, 'M', 0x5B453D,  0.288689, 0.264016, 0.246976,   7.270479024,  6.817176846,  5.415485843,
+126, 0, 'Z', 0x000000,  0.000000, 0.000000, 0.000000,   0.000000000,  0.000000000,  0.000000000,	// black
+127, 0, 'Z', 0xFFFFFF,  0.508057, 0.508057, 0.508057,  95.0470000,   100.00000000, 108.88300000		// white
+ };
+
+ // Keep value in range from min to max by clamping
+ float clamp(float v, float min, float max)		// inclusive
+ {
+	 if (v > max)
+		 v = max; else
+		 if (v < min)
+			 v = min;
+	 return v;
+ }
+
+ // Keep value in from min to max by wrapping
+ float wrap(float v, float min, float max)			// inclusive
+ {
+	 float range = max - min + 1.f;
+	 while (v >= max)
+		 v -= range;
+	 while (v < min)
+		 v += range;
+	 return v;
+ }
+  
 //using namespace concurrency;
 using namespace winrt::Windows::Devices;
 using namespace winrt::Windows::Devices::Display;
@@ -73,7 +205,11 @@ void Game::ConstructorInternal()
 	m_checkerboard = Checkerboard::Cb6x4;
 	m_snoodDiam = 40.f;							// OD of sensor snood in mm
 	m_LocalDimmingBars = 1;						// v1.2 Local Dimming Contrast test
-	m_subTitleVisible = 1;						// v1.2 subTitle Flicker Test
+	m_subTitleVisible = 1;						// v1.4 subTitle Flicker Test
+	m_currentXRiteIndex = 0;					// v1.5 current index into array of Xrite patch colors
+	m_XRitePatchAutoMode = FALSE;				// v1.5 flag for when it auto animates
+	m_XRitePatchDisplayTime = 1.f;				// v1.5 duration to show color patch in auto mode
+//	m_XRitePatchTimer = 0;						// v1.5 timer to run until DisplayTime is up.
 
 	//	These are sRGB code values for HDR10:
 	m_maxEffectivesRGBValue = -1;	// not set yet
@@ -339,6 +475,28 @@ void Game::Update(DX::StepTimer const& timer)
             m_testTimeRemainingSec = std::max(0.0f, m_testTimeRemainingSec);
         }
         break;
+
+	case TestPattern::XRiteColors:
+	{
+		if (m_newTestSelected)
+		{
+			m_testTimeRemainingSec = 1.0f;			// 1 seconds
+			m_XRitePatchAutoMode = false;           // v1.5 flag for when it auto animates
+		}
+		else
+		{
+			if (m_XRitePatchAutoMode)
+			{
+				m_testTimeRemainingSec -= static_cast<float>(timer.GetElapsedSeconds());
+				if (m_testTimeRemainingSec < 0.f)
+				{
+					m_currentXRiteIndex += 1;
+					m_currentXRiteIndex = (int)wrap((float)m_currentXRiteIndex, 0.f, NUMXRITECOLORS);	// Just wrap on each end <inclusive!>
+					m_testTimeRemainingSec = m_XRitePatchDisplayTime;
+				}
+			}
+		}
+	}
 
 	case TestPattern::ActiveDimming: break;
 	case TestPattern::ActiveDimmingDark: break;
@@ -675,7 +833,7 @@ void Game::GenerateTestPattern_StartOfTest(ID2D1DeviceContext2* ctx)
     if (m_newTestSelected) SetMetadataNeutral();
 
     text << m_appTitle;
-    text << L"\n\nVersion 1.2 Beta 3\n\n";
+    text << L"\n\nVersion 1.2 Beta 6\n\n";
     //text << L"ALT-ENTER: Toggle fullscreen: all measurements should be made in fullscreen\n";
 	text << L"->, PAGE DN:       Move to next test\n";
 	text << L"<-, PAGE UP:        Move to previous test\n";
@@ -686,6 +844,7 @@ void Game::GenerateTestPattern_StartOfTest(ID2D1DeviceContext2* ctx)
     text << L"ESCAPE:		Exit fullscreen\n";
     text << L"ALT-F4:		Exit app\n";
     text << L"\nCopyright © VESA\nLast updated: " << __DATE__;
+    text << L"\nIncludes Portrait X-Rite™ color technology\n";
 
     RenderText(ctx, m_largeFormat.Get(), text.str(), m_largeTextRect);
 
@@ -1833,7 +1992,7 @@ void Game::GenerateTestPattern_TenPercentPeakMAX(ID2D1DeviceContext2 * ctx) //**
     if (m_showExplanatoryText)
     {
 //		float fRad = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top)*0.04f);	// 4% screen area colorimeter box
-		float fRad = 0.5 * m_snoodDiam / 25.4 * dpi * 1.2;      // radius of dia 40mm -> inches -> dips
+		float fRad = 0.5f * m_snoodDiam / 25.4f * dpi * 1.2f;      // radius of dia 40mm -> inches -> dips
 
 		float2 center = float2(logSize.right*0.5f, logSize.bottom*0.5f);
 
@@ -2194,7 +2353,7 @@ void Game::GenerateTestPattern_DualCornerBox(ID2D1DeviceContext2* ctx)	//*******
 		float dpi = m_deviceResources->GetDpi();
 
 //		float fRad = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top) * 0.04f);	// 4% screen area colorimeter box
-		float fRad = 0.5 * m_snoodDiam / 25.4 * dpi * 1.2;      // radius of dia 27mm -> inches -> dips
+		float fRad = 0.5f * m_snoodDiam / 25.4f * dpi * 1.2f;      // radius of dia 27mm -> inches -> dips
 
 		float2 center = float2(logSize.right * 0.5f, logSize.bottom * 0.5f);
 
@@ -2355,7 +2514,7 @@ void Game::DrawChecker6x4( ID2D1DeviceContext2* ctx, float colorL, float colorR 
 	{
 		float dpi = m_deviceResources->GetDpi();
 
-		float fRad = 0.5 * m_snoodDiam / 25.4 * dpi * 1.2;      // radius of dia 40mm -> inches -> dips
+		float fRad = 0.5f * m_snoodDiam / 25.4f * dpi * 1.2f;      // radius of dia 40mm -> inches -> dips
 		float2 center = float2(logSize.right * 0.5f, logSize.bottom * 0.5f);
 
 		D2D1_ELLIPSE ellipse;
@@ -2473,7 +2632,7 @@ void Game::DrawChecker4x3(ID2D1DeviceContext2* ctx, float colorL, float colorR =
 	if (m_showExplanatoryText)
 	{
 		float dpi = m_deviceResources->GetDpi();
-		float fRad = 0.5 * m_snoodDiam / 25.4 * dpi * 1.2;      // radius of dia -> inches -> dips
+		float fRad = 0.5f * m_snoodDiam / 25.4f * dpi * 1.2f;      // radius of dia -> inches -> dips
 		float2 center;
 
 		center.y = height * 0.5f;
@@ -2574,7 +2733,7 @@ void Game::DrawChecker4x3n(ID2D1DeviceContext2* ctx, float colorL, float colorR 
 	if (m_showExplanatoryText)
 	{
 		float dpi = m_deviceResources->GetDpi();
-		float fRad = 0.5f * m_snoodDiam / 25.4 * dpi * 1.2;      // radius of dia 27mm -> inches -> dips
+		float fRad = 0.5f * m_snoodDiam / 25.4f * dpi * 1.2f;      // radius of dia 27mm -> inches -> dips
 		float2 center;
 
 		center.y = height * 0.5f;
@@ -3904,7 +4063,7 @@ void Game::GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx)			
 
 	// define the white bars
 	auto logSize = m_deviceResources->GetLogicalSize();
-	float fSizeW = (logSize.right - logSize.left) * 0.15f;				// bar is 15% screen width
+	float fSizeW = (logSize.right - logSize.left) * 0.12f;				// bar is 15% screen width
 	D2D1_RECT_F leftRect =
 	{
 		logSize.left,				// xmin
@@ -3921,7 +4080,7 @@ void Game::GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx)			
 		logSize.bottom				// ymax
 	};
 
-	float fSizeH = (logSize.bottom - logSize.top) * 0.15f;				// bar is 15% screen height
+	float fSizeH = (logSize.bottom - logSize.top) * 0.12f;				// bar is 15% screen height
 	D2D1_RECT_F topRect =
 	{
 		logSize.left,				// xmin
@@ -3975,28 +4134,28 @@ void Game::GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx)			
 
 		ellipse =
 		{
-			D2D1::Point2F(logSize.right*0.1f, center.y),
+			D2D1::Point2F(logSize.right*0.075f, center.y),
 			fRad, fRad
 		};
 		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2.f);
 
 		ellipse =
 		{
-			D2D1::Point2F(logSize.right*0.9f, center.y),
+			D2D1::Point2F(logSize.right*0.925f, center.y),
 			fRad, fRad
 		};
 		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2.f );
 
 		ellipse =
 		{
-			D2D1::Point2F(center.x, logSize.bottom*0.9f),
+			D2D1::Point2F(center.x, logSize.bottom*0.925f),
 			fRad, fRad
 		};
 		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2.f );
 
 		ellipse =
 		{
-			D2D1::Point2F(center.x, logSize.bottom*0.1f),
+			D2D1::Point2F(center.x, logSize.bottom*0.075f),
 			fRad, fRad
 		};
 		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2.f );
@@ -4050,7 +4209,7 @@ void Game::GenerateTestPattern_BlackLevelHDRvsSDR(ID2D1DeviceContext2* ctx)			  
 	if (m_showExplanatoryText)
 	{
 		float dpi = m_deviceResources->GetDpi();
-		float fRad = 0.5 * m_snoodDiam / 25.4 * dpi * 1.2;      // radius of dia 27mm -> inches -> dips
+		float fRad = 0.5f * m_snoodDiam / 25.4f * dpi * 1.2f;      // radius of dia 27mm -> inches -> dips
 
 		float2 center = float2(logSize.right * 0.5f, logSize.bottom * 0.5f);
 
@@ -4135,7 +4294,7 @@ void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	      
 	ComPtr<ID2D1SolidColorBrush> starBrush;
 	D2D1_ELLIPSE ellipse;
 	float c, pixels = 0;
-	srand(314158);											// seed the starfield rng
+//	srand(314158);											// seed the starfield rng
 	for (int i = 1; i < 2000; i++)
 	{
 		c = nitstoCCCS((randf()) * 9.f + 1.f);
@@ -4159,7 +4318,7 @@ void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	      
 	float nits = 5.0f;		// background gray
 	c = nitstoCCCS(nits) / BRIGHTNESS_SLIDER_FACTOR;
 
-	float avg = nits * 1.1;
+	float avg = nits * 1.1f;
 	if (m_newTestSelected)
 		SetMetadata(m_outputDesc.MaxLuminance, avg, GAMUT_Native);
 
@@ -4220,8 +4379,8 @@ void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	      
 			&layout));
 
 		// draw the subtitle with a black dropshadow underneath
-		ctx->DrawTextLayout(D2D1::Point2F(subTitleRect.left + 1, subTitleRect.top + 1.), layout.Get(), m_blackBrush.Get());
-		ctx->DrawTextLayout(D2D1::Point2F(subTitleRect.left    , subTitleRect.top)     , layout.Get(), subTitleBrush.Get());
+		ctx->DrawTextLayout(D2D1::Point2F(subTitleRect.left + 1, subTitleRect.top + 1.f), layout.Get(), m_blackBrush.Get());
+		ctx->DrawTextLayout(D2D1::Point2F(subTitleRect.left    , subTitleRect.top)      , layout.Get(), subTitleBrush.Get());
 	}
 
 	if (m_showExplanatoryText)
@@ -4246,76 +4405,42 @@ void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	      
 
 void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.2.5
 {
-#define NXRITECOLORS 150
-	uint PQCodes[NXRITECOLORS] =
-	{
-		1023,
-		0,
-		8,
-		16,
-		24,
-		36,
-		48,
-		56,
-		64,
-		120,
-		156,
-		256,
-		340,
-		384,
-		452,
-		488,
-		520,
-		592,
-		616,
-		636,
-		660,
-		664,
-		668,
-		692,
-		704,
-		708,
-		712,
-		728,
-		744,
-		756,
-		760,
-		764,
-		768,
-		788,
-		804,
-		808,
-		812,
-		828,
-		840,
-		844,
-		872,
-		892,
-		920,
-		1023
-	};
+//#define NXRITECOLORS 150
+
 
 	if (m_newTestSelected)
 	{
 		SetMetadata(m_outputDesc.MaxLuminance, m_outputDesc.MaxLuminance * 0.10f, GAMUT_Native);
 	}
 
-	// find the brightest tile we need to test on this panel
-	for (int i = 3; i < NPQCODES; i++)
-	{
-		m_maxProfileTile = i;
-		if (PQCodes[i] > m_maxPQCode)
-			break;
-	}
-	// get current intensity value to display on tile
-	UINT PQCode = PQCodes[m_currentProfileTile];
-	if (PQCode > m_maxPQCode) PQCode = m_maxPQCode;				// clamp to max reported possible
+	float3 colorXYZ;
+	colorXYZ.x = (float)XRite[m_currentXRiteIndex].X/100.f;
+	colorXYZ.y = (float)XRite[m_currentXRiteIndex].Y/100.f;
+	colorXYZ.z = (float)XRite[m_currentXRiteIndex].Z/100.f;
 
-	float nits = Remove2084(PQCode / 1023.0f) * 10000.0f;		// go to linear space
-	float c = nitstoCCCS(nits / BRIGHTNESS_SLIDER_FACTOR);		// scale by 80 and slider
+	// convert to 709 gamut space	
+	float3 color709 = XYZ_to_709RGB * colorXYZ;
 
-	ComPtr<ID2D1SolidColorBrush> peakBrush;
-	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &peakBrush));
+#if 0
+	if (CheckHDR_On())
+		ColorCCCS = Apply2084(Color709);
+	else
+		ColorCCCS = ApplySRGBCurve(Color709);
+#endif
+
+	float3 colorHDR10;
+	colorHDR10.r = XRite[m_currentXRiteIndex].R;
+	colorHDR10.g = XRite[m_currentXRiteIndex].G;
+	colorHDR10.b = XRite[m_currentXRiteIndex].B;
+
+	float3 colorCCCS = HDR10ToLinear709( colorHDR10 );
+
+	// create D2D brush of this color
+	ComPtr<ID2D1SolidColorBrush> xrBrush;
+	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(colorCCCS.r, colorCCCS.g, colorCCCS.b), &xrBrush));
+
+	float nits = Remove2084( 1023.f / 1023.0f) * 10000.0f;		// go to linear space
+//	float c = nitstoCCCS(nits / BRIGHTNESS_SLIDER_FACTOR);		// scale by 80 and slider
 
 	float dpi = m_deviceResources->GetDpi();
 	auto logSize = m_deviceResources->GetLogicalSize();
@@ -4335,13 +4460,11 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 		(logSize.right - logSize.left) * (0.5f + sqrtf(0.1) / 2.0f) + jitter.x,
 		(logSize.bottom - logSize.top) * (0.5f + sqrtf(0.1) / 2.0f) + jitter.y
 	};
-	ctx->FillRectangle(&tenPercentRect, peakBrush.Get());
-
-	float PQcheck = Apply2084(c * 80.f * BRIGHTNESS_SLIDER_FACTOR / 10000.f) * 1023.f;
+	ctx->FillRectangle(&tenPercentRect, xrBrush.Get());
 
 	if (m_showExplanatoryText)
 	{
-		float fRad = 0.5 * m_snoodDiam / 25.4 * dpi * 1.2;      // radius of dia 27mm -> inches -> dips
+		float fRad = 0.5f * m_snoodDiam / 25.4f * dpi * 1.2f;      // radius of dia 27mm -> inches -> dips
 		float2 center = float2(logSize.right * 0.5f, logSize.bottom * 0.5f);
 
 		D2D1_ELLIPSE ellipse =
@@ -4353,15 +4476,22 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 1);
 
 		std::wstringstream title;
-		title << fixed << setw(8) << setprecision(0);
+		title << fixed << setprecision(0);
 
-		title << L"   X-Rite Colors\n";
-		title << L"Subtest#: ";
-		title << m_currentProfileTile;
-		title << L"   HDR10: ";
-		title << PQCode;
-		title << L"   Nits: ";
-		title << setprecision(4) << nits;
+		title << L"   X-Rite™ Colors\n";
+		title << L"Color#: ";
+		title << setw(3) << XRite[m_currentXRiteIndex].num;
+		title << L"   RxC: ";
+		title << setw(2) << XRite[m_currentXRiteIndex].row;
+		title << L"|";
+		title << XRite[m_currentXRiteIndex].col;
+		title << setbase(16) << L"   RGB  ";
+		title << setw(6) << XRite[m_currentXRiteIndex].RGB;
+		if (m_XRitePatchAutoMode)
+			title << "\nAuto changing every "<< m_XRitePatchDisplayTime << "sec";
+
+//		title << L"   Nits: ";
+//		title << setprecision(4) << nits;
 		//		title << L"   HDR10b: ";
 		//		title << setprecision(4) << PQcheck;		// echo input to validate precision
 		title << L"\n";
@@ -5032,13 +5162,13 @@ void Game::RenderText(ID2D1DeviceContext2* ctx, IDWriteTextFormat* fmt, std::wst
     {
 		// add highlight
 //		ctx->DrawTextLayout(D2D1::Point2F(textPos.left, textPos.top), layout.Get(), m_whiteBrush.Get());
-		ctx->DrawTextLayout(D2D1::Point2F(textPos.left+1.,textPos.top+1.), layout.Get(), m_blackBrush.Get());
+		ctx->DrawTextLayout(D2D1::Point2F(textPos.left+1.f, textPos.top+1.f), layout.Get(), m_blackBrush.Get());
     }
     else
     {
 		// add dropshadow
-		ctx->DrawTextLayout(D2D1::Point2F(textPos.left + 1, textPos.top + 1.), layout.Get(), m_blackBrush.Get());
-		ctx->DrawTextLayout(D2D1::Point2F(textPos.left, textPos.top), layout.Get(), m_whiteBrush.Get());
+		ctx->DrawTextLayout(D2D1::Point2F(textPos.left + 1.f, textPos.top + 1.f), layout.Get(), m_blackBrush.Get());
+		ctx->DrawTextLayout(D2D1::Point2F(textPos.left,       textPos.top),       layout.Get(), m_whiteBrush.Get());
     }
 
 
@@ -5374,27 +5504,6 @@ void Game::ChangeTestPattern(bool increment)
     m_newTestSelected = true;
 }
 
-// Keep value in range from min to max by clamping
-float clamp( float v, float min, float max )		// inclusive
-{
-	if (v > max)
-		v = max; else
-	if (v < min)
-		v = min;
-	return v;
-}
-
-// Keep value in from min to max by wrapping
-float wrap( float v, float min, float max )			// inclusive
-{
-	float range = max - min + 1.f;
-	while (v >= max)
-		v -= range;
-	while (v < min)
-		v += range;
-	return v;
-}
-
 void Game::SetShift(bool shift)
 {
 	m_shiftKey = shift;
@@ -5486,18 +5595,18 @@ void Game::ChangeSubtest( INT32 increment )
 	case TestPattern::SharpeningFilter:
 	case TestPattern::ToneMapSpike:
 		m_currentColor -= increment;				
-		m_currentColor = wrap( m_currentColor, 0., 3. );	// Just wrap on each end
+		m_currentColor = (int) wrap( (float)m_currentColor, 0.f, 3.f );	// Just wrap on each end
 		break;
 
 	case TestPattern::ProfileCurve:
 		m_currentProfileTile += increment;
-		m_currentProfileTile = wrap(m_currentProfileTile, 0, m_maxProfileTile);
+		m_currentProfileTile = (int) wrap((float)m_currentProfileTile, 0.f, (float)m_maxProfileTile);
 		break;
 
 	// 5 new tests for v1.2								// TODO
 	case TestPattern::LocalDimmingContrast:				// swtich white bars based on tier
 		m_LocalDimmingBars -= increment;
-		m_LocalDimmingBars = wrap(m_LocalDimmingBars, 0., 3.);	// Just wrap on each end <inclusive!>
+		m_LocalDimmingBars = (int) wrap((float)m_LocalDimmingBars, 0.f, 3.f);	// Just wrap on each end <inclusive!>
 		break;
 
 	case TestPattern::BlackLevelHDRvsSDR:				// No UI change - just be clear on SDR vs HDR in text
@@ -5505,7 +5614,7 @@ void Game::ChangeSubtest( INT32 increment )
 
 	case TestPattern::BlackLevelCrush:					// rotate through 4 fulllscreen background colors
 		m_currentBlack -= increment;
-		m_currentBlack = wrap(m_currentBlack, 0., 4.);	// Just wrap on each end <inclusive!>
+		m_currentBlack = (int) wrap((float)m_currentBlack, 0.f, 4.f);	// Just wrap on each end <inclusive!>
 		break;
 
 	case TestPattern::SubTitleFlicker:					// turn subtitle text on/off
@@ -5513,7 +5622,15 @@ void Game::ChangeSubtest( INT32 increment )
 		break;
 
 	case TestPattern::XRiteColors:						// cycle through the official Xrite patch colors
+		m_currentXRiteIndex -= increment;
+		m_currentXRiteIndex = (int)wrap((float)m_currentXRiteIndex, 0.f, NUMXRITECOLORS );	// Just wrap on each end <inclusive!>
 		break;
+
+	case TestPattern::StaticGradient:
+		if ( increment < 0 )
+			ChangeGradientColor(-0.05f, -0.05f, -0.05f);
+		else
+			ChangeGradientColor(+0.05f, +0.05f, +0.05f);
 
 	}
 }
@@ -5576,6 +5693,11 @@ bool Game::ToggleInfoTextVisible()
 {
     m_showExplanatoryText = !m_showExplanatoryText;
     return m_showExplanatoryText;
+}
+
+void Game::ToggleXRitePatchAuto( void )
+{
+	m_XRitePatchAutoMode = !m_XRitePatchAutoMode;
 }
 
 #pragma endregion
