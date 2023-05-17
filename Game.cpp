@@ -210,6 +210,8 @@ void Game::ConstructorInternal()
 	m_XRitePatchAutoMode = FALSE;				// v1.5 flag for when it auto animates
 	m_XRitePatchDisplayTime = 1.f;				// v1.5 duration to show color patch in auto mode
 //	m_XRitePatchTimer = 0;						// v1.5 timer to run until DisplayTime is up.
+	m_whiteLevelBracket = 1;					// what tier/level we should use
+	m_brightnessBias = 0;						// correction for panel
 
 	//	These are sRGB code values for HDR10:
 	m_maxEffectivesRGBValue = -1;	// not set yet
@@ -492,7 +494,7 @@ void Game::Update(DX::StepTimer const& timer)
 				{
 					m_currentXRiteIndex += 1;
 					m_currentXRiteIndex = (int)wrap((float)m_currentXRiteIndex, 0.f, NUMXRITECOLORS);	// Just wrap on each end <inclusive!>
-					m_testTimeRemainingSec = m_XRitePatchDisplayTime;
+					m_testTimeRemainingSec += m_XRitePatchDisplayTime;					// extend timer by one period
 				}
 			}
 		}
@@ -833,7 +835,7 @@ void Game::GenerateTestPattern_StartOfTest(ID2D1DeviceContext2* ctx)
     if (m_newTestSelected) SetMetadataNeutral();
 
     text << m_appTitle;
-    text << L"\n\nVersion 1.2 Beta 6\n\n";
+    text << L"\n\nVersion 1.2 Beta 7\n\n";
     //text << L"ALT-ENTER: Toggle fullscreen: all measurements should be made in fullscreen\n";
 	text << L"->, PAGE DN:       Move to next test\n";
 	text << L"<-, PAGE UP:        Move to previous test\n";
@@ -973,7 +975,7 @@ void Game::GenerateTestPattern_ConnectionProperties(ID2D1DeviceContext2* ctx)
 		break;
 
 	case DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020: // HDR10 PC
-		text << L"] HDR/advanced color on";
+		text << L"] HDR/advanced color ON";
 		break;
 	default:
 		text << L"] Unknown";
@@ -1074,24 +1076,26 @@ void Game::GenerateTestPattern_PanelCharacteristics(ID2D1DeviceContext2* ctx)
 	
 	//	text << m_outputDesc.DeviceName;
 
-	text << L"\nBase Levels:";
+	text << L"\nBase Levels: (nits)";
     text << L"\n  Max peak luminance:          ";
+	text << setprecision(0);
     text << m_rawOutDesc.MaxLuminance;
-    text << L"\n  Max frame-average luminance: ";
+    text << L".\n  Max frame-average luminance: ";
     text << m_rawOutDesc.MaxFullFrameLuminance;
-	text << L"\n  Min luminance:                 ";
-	text << setprecision(5);
+	text << L".\n  Min luminance:                 ";
+	text << setprecision(4);
 	text << m_rawOutDesc.MinLuminance;
-	text << L"\nAdjusted Levels:";
+	text << L"\nAdjusted Levels: (nits)";
 	text << L"\n  Max peak luminance:          ";
-	text << setprecision(2);
+	text << setprecision(0);
 	text << m_outputDesc.MaxLuminance;
-	text << L"\n  Max frame-average luminance: ";
+	text << L".\n  Max frame-average luminance: ";
 	text << m_outputDesc.MaxFullFrameLuminance;
-	text << L"\n  Min luminance:                 ";
-	text << setprecision(5);
+	text << L".\n  Min luminance:                 ";
+	text << setprecision(4);
 	text << m_outputDesc.MinLuminance;
 	text << L"\nCurr. Brightness Slider Factor:  ";
+	text << setprecision(2);
 	text << BRIGHTNESS_SLIDER_FACTOR;
 
 //  text << L"\nContrast ratio (peak/min):   ";
@@ -1230,18 +1234,18 @@ void Game::GenerateTestPattern_ResetInstructions(ID2D1DeviceContext2* ctx)
     text << L"For external displays, use their OSD to reset\n";
     text << L"all settings to the default or factory state.\n\n";
 
-	text << L"For internal panels, set the OS \'Brightness\' slider to default.\n";
+	text << L"Set any OS \'Brightness\' slider to factor 1.0 on previous screen.\n";
 	text << L"Set the \'SDR color appearance\' slider to the leftmost point.\n";
 	text << L"DO NOT CHANGE BRIGHTNESS SLIDERS AFTER APP START.\n\n";
 
 	text << L"Be sure the \'Night light' setting is off.\n";
 
-	text << L"Disable any Ambient Light Sensor capability.\n\n";
+	text << L"Disable any Ambient Light Sensor or Adaptive Color capability.\n\n";
 
 	text << L"The display should be at normal operating temperature.\n";
-    text << L"   This can take as much as 30 minutes for some panels.\n";
+    text << L"  -This can take as much as 30 minutes for some panels.\n";
 
-    text << L"   Also note, ambient temperature may affect scores.\n\n";
+    text << L"  -Also note, ambient temperature may affect scores.\n\n";
 
     text << L"Use the following screen to check correct brightness levels";
 
@@ -1849,7 +1853,7 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2* ctx) //******
 		};
 		ctx->FillEllipse(&ellipse, starBrush.Get() );
 
-		pixels += M_PI * fRad * fRad * c;
+		pixels += M_PI_F * fRad * fRad * c;
 
 	}
 	float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
@@ -3961,7 +3965,7 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 		};
 		ctx->FillEllipse(&ellipse, starBrush.Get());
 
-		pixels += M_PI * fRad * fRad * c;
+		pixels += M_PI_F * fRad * fRad * c;
 
 	}
 	float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
@@ -4309,7 +4313,7 @@ void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	      
 		};
 		ctx->FillEllipse(&ellipse, starBrush.Get());
 
-		pixels += M_PI * fRad * fRad * c;
+		pixels += M_PI_F * fRad * fRad * c;
 
 	}
 	float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
@@ -4405,12 +4409,10 @@ void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	      
 
 void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.2.5
 {
-//#define NXRITECOLORS 150
-
-
 	if (m_newTestSelected)
 	{
 		SetMetadata(m_outputDesc.MaxLuminance, m_outputDesc.MaxLuminance * 0.10f, GAMUT_Native);
+		m_testTimeRemainingSec = 1.0f;			// 1 seconds  be sure we are set up for animation
 	}
 
 	float3 colorXYZ;
@@ -4432,7 +4434,11 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 	colorHDR10.r = XRite[m_currentXRiteIndex].R;
 	colorHDR10.g = XRite[m_currentXRiteIndex].G;
 	colorHDR10.b = XRite[m_currentXRiteIndex].B;
+	
+	// scale up for white level selected
+	colorHDR10 = colorHDR10 * (float)(0.01f*WhiteLevelBrackets[m_whiteLevelBracket]);
 
+	// convert to Canonical Composition Color Space for desktop compositor
 	float3 colorCCCS = HDR10ToLinear709( colorHDR10 );
 
 	// create D2D brush of this color
@@ -4473,7 +4479,7 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 			fRad, fRad						// TODO: make target diameter 27mm using DPI data
 		};
 
-		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 1);
+		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2 );
 
 		std::wstringstream title;
 		title << fixed << setprecision(0);
@@ -4487,6 +4493,8 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 		title << XRite[m_currentXRiteIndex].col;
 		title << setbase(16) << L"   RGB  ";
 		title << setw(6) << XRite[m_currentXRiteIndex].RGB;
+		title << setbase(10) << L"\n White Level: ";
+		title << WhiteLevelBrackets[m_whiteLevelBracket];
 		if (m_XRitePatchAutoMode)
 			title << "\nAuto changing every "<< m_XRitePatchDisplayTime << "sec";
 
@@ -5699,6 +5707,34 @@ void Game::ToggleXRitePatchAuto( void )
 {
 	m_XRitePatchAutoMode = !m_XRitePatchAutoMode;
 }
+
+// used to manually correct for monitor not being exactly PQ/2084 profile
+void Game::TweakBrightnessBias(INT32 increment)
+{
+	if (m_shiftKey)
+		increment *= 10;
+
+	m_brightnessBias += increment;
+}
+
+// select brightness level for color patch test - usually based on target testing tier
+void Game::SelectWhiteLevel(INT32 increment)
+{
+	if (increment > 0)
+	{
+		m_whiteLevelBracket++;
+		if (m_whiteLevelBracket > NUM_WBRACKETS-1)
+			m_whiteLevelBracket = 0;					// wrap
+	}
+
+	if (increment < 0)
+	{
+		m_whiteLevelBracket--;
+		if (m_whiteLevelBracket < 0)
+			m_whiteLevelBracket = NUM_WBRACKETS - 1;	// wrap
+	}
+}
+
 
 #pragma endregion
 

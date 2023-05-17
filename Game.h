@@ -56,6 +56,9 @@ private:
         GAMUT_ACES   = 5,
     };
 
+    #define NUM_WBRACKETS 8
+    UINT32 WhiteLevelBrackets[NUM_WBRACKETS] = { 50, 100, 200, 250, 300, 500, 700, 1000 };
+
     // Used by any test that loads a custom effect or image from file.
     struct TestPatternResources
     {
@@ -163,6 +166,8 @@ public:
     void ChangeSubtest( INT32 increment );
     void SetShift( bool shift );
     void ToggleXRitePatchAuto( void );
+    void TweakBrightnessBias(INT32 increment);
+    void SelectWhiteLevel(INT32 incrememnt);
     void StartTestPattern(void);
     void ChangeGradientColor(float deltaR, float deltaG, float deltaB);
     void ChangeBackBufferFormat(DXGI_FORMAT fmt);
@@ -305,6 +310,8 @@ private:
     bool                                                    m_XRitePatchAutoMode;               // v1.5 flag for when it auto animates
     float                                                   m_XRitePatchDisplayTime;            // how long to show XRite color patch in auto mode
 //  float                                                   m_XRitePatchTimer;                  // timer for tracking above
+    INT32                                                   m_whiteLevelBracket;                // what tier/level we should use
+    float                                                   m_brightnessBias;                   // correction for panel
     float                                                   m_gradientAnimationBase;
     bool                                                    m_showExplanatoryText;
     float                                                   m_testTimeRemainingSec;

@@ -299,7 +299,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             game->ChangeSubtest(-1);
             break;
         case VK_UP:
-            game->ChangeSubtest(1);
+            game->ChangeSubtest(+1);
             break;
         }
         break;
@@ -385,7 +385,23 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             game->ChangeCheckerboard(true);
             break;
 
-        //case 0x38: // '8'
+        case VK_OEM_PLUS:
+            game->TweakBrightnessBias(+1);  // correct for monitor being out of calibration
+            break;
+
+        case VK_OEM_MINUS:
+            game->TweakBrightnessBias(-1);  // correct for monitor being out of calibration
+            break;
+            
+        case VK_OEM_4:  // [
+            game->SelectWhiteLevel(-1);     // change to match testing Tier/bracket 
+            break;
+
+        case VK_OEM_6:  // ]
+            game->SelectWhiteLevel(+1);     // change to match testing Tier/bracket
+            break;
+
+            //case 0x38: // '8'
         //    game->ChangeBackBufferFormat(DXGI_FORMAT_R8G8B8A8_UNORM);
         //    break;
 
