@@ -835,7 +835,7 @@ void Game::GenerateTestPattern_StartOfTest(ID2D1DeviceContext2* ctx)
     if (m_newTestSelected) SetMetadataNeutral();
 
     text << m_appTitle;
-    text << L"\n\nVersion 1.2 Beta 7\n\n";
+    text << L"\n\nVersion 1.2 Beta 8\n\n";
     //text << L"ALT-ENTER: Toggle fullscreen: all measurements should be made in fullscreen\n";
 	text << L"->, PAGE DN:       Move to next test\n";
 	text << L"<-, PAGE UP:        Move to previous test\n";
@@ -4436,10 +4436,14 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 	colorHDR10.b = XRite[m_currentXRiteIndex].B;
 	
 	// scale up for white level selected
-	colorHDR10 = colorHDR10 * (float)(0.01f*WhiteLevelBrackets[m_whiteLevelBracket]);
+//	colorHDR10 = colorHDR10 * (float)(0.01f*WhiteLevelBrackets[m_whiteLevelBracket]);
 
 	// convert to Canonical Composition Color Space for desktop compositor
 	float3 colorCCCS = HDR10ToLinear709( colorHDR10 );
+
+	// scale up for white level selected now we are linear
+	colorCCCS = colorCCCS * (float)(0.01f * WhiteLevelBrackets[m_whiteLevelBracket]);
+
 
 	// create D2D brush of this color
 	ComPtr<ID2D1SolidColorBrush> xrBrush;
