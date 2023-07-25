@@ -106,8 +106,8 @@ public:
 		ActiveDimming,				// 5.1
 		ActiveDimmingDark,			// 5.2
 		ActiveDimmingSplit,			// 5.3
-		ColorPatches10,             // 6.  10% OPR
-		ColorPatches,               // 6. 100% OPR
+		ColorPatches,               // 6. 8-10% OPR
+		ColorPatchesFull,           // 6. Fullscreen 100% OPR
 		BitDepthPrecision,          // 7. Uses custom effect.
         RiseFallTime,               // 8.
 		ProfileCurve,               // 9. Validate tracking of 2084 profile
@@ -219,7 +219,7 @@ private:
 	void GenerateTestPattern_ActiveDimming(ID2D1DeviceContext2 * ctx);						// 5.1
 	void GenerateTestPattern_ActiveDimmingDark(ID2D1DeviceContext2 * ctx);					// 5.2
 	void GenerateTestPattern_ActiveDimmingSplit(ID2D1DeviceContext2 * ctx);					// 5.3
-    void GenerateTestPattern_ColorPatches(   ID2D1DeviceContext2* ctx, float OPR );			// 6
+    void GenerateTestPattern_ColorPatches(   ID2D1DeviceContext2* ctx, bool full = false );	// 6
     void GenerateTestPattern_ColorPatchesMAX(ID2D1DeviceContext2* ctx, float OPR );			// 6.b MAX legacy
     void GenerateTestPattern_BitDepthPrecision(ID2D1DeviceContext2* ctx);					// 7
 	void GenerateTestPattern_RiseFallTime(ID2D1DeviceContext2* ctx);						// 8

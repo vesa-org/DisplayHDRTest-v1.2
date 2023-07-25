@@ -353,7 +353,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             game->SetTestPattern(Game::TestPattern::StaticContrastRatio);
             break;
         case 0x36:                                                        // '6'
-            game->SetTestPattern(Game::TestPattern::ColorPatches10);
+            game->SetTestPattern(Game::TestPattern::ColorPatches);
             break;
         case 0x37:                                                        // '7'
             game->SetTestPattern(Game::TestPattern::BitDepthPrecision);

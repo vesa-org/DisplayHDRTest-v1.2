@@ -27,8 +27,9 @@
 
 #define BRIGHTNESS_SLIDER_FACTOR (m_rawOutDesc.MaxLuminance / m_outputDesc.MaxLuminance)
 
+#define PATCHPCT (0.08f)
 #define NUMXRITECOLORS (95.f)
-struct XriteColors		// provided courtesy of Portrait X-Rite calibration technology
+struct XriteColors		// provided courtesy of Portrait X-Rite(TM) calibration technology
 {
 	int num;
 	int row;
@@ -835,7 +836,7 @@ void Game::GenerateTestPattern_StartOfTest(ID2D1DeviceContext2* ctx)
     if (m_newTestSelected) SetMetadataNeutral();
 
     text << m_appTitle;
-    text << L"\n\nVersion 1.2 Beta 8\n\n";
+    text << L"\n\nVersion 1.2 Beta 9\n\n";
     //text << L"ALT-ENTER: Toggle fullscreen: all measurements should be made in fullscreen\n";
 	text << L"->, PAGE DN:       Move to next test\n";
 	text << L"<-, PAGE UP:        Move to previous test\n";
@@ -1825,11 +1826,12 @@ float randf_s()
 #define JITTER_RADIUS 10.0f
 void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2* ctx) //********************** 1.
 {
+	float patchPct = PATCHPCT;			// patch percentage of screen area
 	auto logSize = m_deviceResources->GetLogicalSize();
 
 	// "tone map" PQ limit of 10k nits down to panel maxLuminance in CCCS
 	float nits = m_outputDesc.MaxLuminance;
-	float avg = nits * 0.1f;								// 10% screen area
+	float avg = nits * patchPct;								// 10% screen area
 	if (m_newTestSelected) {
 		SetMetadata(nits, avg, GAMUT_Native);
 	}
@@ -1837,12 +1839,12 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2* ctx) //******
 	// draw a starfield background
 	ComPtr<ID2D1SolidColorBrush> starBrush;
 	D2D1_ELLIPSE ellipse;
-	float c, pixels = 0;
+	float pixels = 0;
 	srand(314158);											// seed the starfield rng
 	for ( int i = 1; i < 2000; i++)
 	{
-		c = nitstoCCCS( (randf())*185.0f + 1.f );
-		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &starBrush));
+		float s = nitstoCCCS( (randf())*185.0f + 1.f );
+		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(s, s, s), &starBrush));
 
 		float2 center = float2(logSize.right * randf(), logSize.bottom * randf() );
 		float fRad = randf() * randf() * randf() * 12.f + 1.f;
@@ -1853,16 +1855,23 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2* ctx) //******
 		};
 		ctx->FillEllipse(&ellipse, starBrush.Get() );
 
-		pixels += M_PI_F * fRad * fRad * c;
+		pixels += M_PI_F * fRad * fRad * s;
 
 	}
 	float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
 	float APL = pixels / area;
 
-	// draw the 10% rectangle
+	// draw the center rectangle
+	float c;
     c = nitstoCCCS(nits);
-    ComPtr<ID2D1SolidColorBrush> peakBrush;
-    DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &peakBrush));
+    ComPtr<ID2D1SolidColorBrush> centerBrush;
+    DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &centerBrush));
+
+	float size = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top));
+	size = size * sqrtf(patchPct);  // dimensions for a square of this % screen area
+	float2 center;
+	center.x = (logSize.right - logSize.left) * 0.50f;
+	center.y = (logSize.bottom - logSize.top) * 0.50f;
 
 	float dpi = m_deviceResources->GetDpi();
 	float2 jitter;
@@ -1873,16 +1882,17 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2* ctx) //******
 	}
 	while( (jitter.x*jitter.x + jitter.y*jitter.y) > radius);
 
-	float patchSize = 0.08f;
+	// Apply jitter
+	center = center + jitter;
 
-	D2D1_RECT_F tenPercentRect =
+	D2D1_RECT_F centerRect =
 	{
-		(logSize.right - logSize.left) * (0.5f - sqrtf(patchSize) / 2.0f) + jitter.x,
-		(logSize.bottom - logSize.top) * (0.5f - sqrtf(patchSize) / 2.0f) + jitter.y,
-		(logSize.right - logSize.left) * (0.5f + sqrtf(patchSize) / 2.0f) + jitter.x,
-		(logSize.bottom - logSize.top) * (0.5f + sqrtf(patchSize) / 2.0f) + jitter.y
-    };
-	ctx->FillRectangle(&tenPercentRect, peakBrush.Get());
+		center.x - size * 0.50f,
+		center.y - size * 0.50f,
+		center.x + size * 0.50f,
+		center.y + size * 0.50f
+	};
+	ctx->FillRectangle(&centerRect, centerBrush.Get());
 
 #if 0
 //	Not clear whether to use an image or a bitmap
@@ -1936,7 +1946,8 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2* ctx) //******
 
         std::wstringstream title;
 		title << fixed << setw(8) << setprecision(2);
-        title << L"1.a Peak Luminance  10% Screen Area\nWait before taking measurements: ";
+		title << L"1.a Peak Luminance @ ";
+		title << patchPct*100.f << L"% screen area\nWait before taking measurements : ";
         title << m_testTimeRemainingSec;
         title << L" seconds remaining";
         title << L"\nNits: ";
@@ -1974,23 +1985,31 @@ void Game::GenerateTestPattern_TenPercentPeakMAX(ID2D1DeviceContext2 * ctx) //**
 	float dpi = m_deviceResources->GetDpi();
     auto logSize = m_deviceResources->GetLogicalSize();
 
+	float patchPct = PATCHPCT;		// patch percentage of screen area
+	float size = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top));
+	size = size * sqrtf(patchPct);  // dimensions for a square of this % screen area
+
+	float2 center;
+	center.x = (logSize.right - logSize.left) * 0.50f;
+	center.y = (logSize.bottom - logSize.top) * 0.50f;
+
 	float2 jitter;
 	float radius = JITTER_RADIUS * dpi / 96.0f;
-
 	do {
 		jitter.x = radius*(randf_s()*2.f - 1.f);
 		jitter.y = radius*(randf_s()*2.f - 1.f);
 	} while ((jitter.x*jitter.x + jitter.y*jitter.y) > radius );
 
-    D2D1_RECT_F tenPercentRect =
-    {
-		(logSize.right - logSize.left) * (0.5f - sqrtf(0.1) / 2.0f) + jitter.x,
-		(logSize.bottom - logSize.top) * (0.5f - sqrtf(0.1) / 2.0f) + jitter.y,
-		(logSize.right - logSize.left) * (0.5f + sqrtf(0.1) / 2.0f) + jitter.x,
-		(logSize.bottom - logSize.top) * (0.5f + sqrtf(0.1) / 2.0f) + jitter.y
-    };
+	// Apply jitter
+	center = center + jitter;
 
-
+	D2D1_RECT_F tenPercentRect =
+	{
+		center.x - size * 0.50f,
+		center.y - size * 0.50f,
+		center.x + size * 0.50f,
+		center.y + size * 0.50f
+	};
     ctx->FillRectangle(&tenPercentRect, peakBrush.Get());
 
     if (m_showExplanatoryText)
@@ -2009,7 +2028,8 @@ void Game::GenerateTestPattern_TenPercentPeakMAX(ID2D1DeviceContext2 * ctx) //**
 
         std::wstringstream title;
 		title << fixed << setw(8) << setprecision(2);
-        title << L"1.b Peak Luminance MAX  10% Screen Area\nWait before taking measurements: ";
+		title << L"1.b Peak Luminance MAX @ ";
+		title << patchPct*100.f << L"% screen area\nWait before taking measurements: ";
         title << m_testTimeRemainingSec;
         title << L" seconds remaining";
         title << L"\nNits: ";
@@ -3205,17 +3225,21 @@ float3 roundf3(float3 in)
 void Game::GenerateTestPattern_ColorPatches			//******************************************* 6.
 (
 	ID2D1DeviceContext2 * ctx,
-	float OPR										// On-Pixel-Ratio	% of screen to cover
+	bool fullscreen									// fullscreen vs std patch size
 )
 {
 	float nits;										// Equivalent brightness (for white)
 	nits = m_outputDesc.MaxLuminance;				// for 10% OPR case
 
-	bool blackText = true;
-	if (OPR < 0.9f)
-		blackText = false;
+	float OPR = PATCHPCT;							// On-Pixel-Ratio: Proportion of screen that is test patch
+	bool blackText = false;
+	if (fullscreen)
+	{
+		OPR = 1.0f;
+		blackText = true;
+	}
 
-    if (m_newTestSelected)
+	if (m_newTestSelected)
 	{
 		SetMetadata(nits, nits*OPR, GAMUT_Native);	// max and average
 	}
@@ -3359,23 +3383,39 @@ void Game::GenerateTestPattern_ColorPatches			//********************************
 	float dpi = m_deviceResources->GetDpi();
 	D2D1_RECT_F logSize = m_deviceResources->GetLogicalSize();
 
-	float2 jitter;
-	float radius = JITTER_RADIUS * dpi / 96.0f;
-	do {
-		jitter.x = radius * (randf_s() * 2.f - 1.f);
-		jitter.y = radius * (randf_s() * 2.f - 1.f);
-	} while ((jitter.x * jitter.x + jitter.y * jitter.y) > radius);
-
-	if (OPR > 0.99) jitter = float2(0.f, 0.f);
-
-	D2D1_RECT_F centerRect =
+	D2D1_RECT_F centerRect;
+	if (fullscreen)
+		centerRect = logSize;
+	else
 	{
-		(logSize.right - logSize.left) * (0.5f - fSize * 0.5f) + jitter.x,
-		(logSize.bottom - logSize.top) * (0.5f - fSize * 0.5f) + jitter.y,
-		(logSize.right - logSize.left) * (0.5f + fSize * 0.5f) + jitter.x,
-		(logSize.bottom - logSize.top) * (0.5f + fSize * 0.5f) + jitter.y
-	};
+		float patchPct = OPR;			// patch percentage of screen area
+		float size = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top));
+		size = size * sqrtf(OPR);		// dimensions for a square of this % screen area
 
+		float2 center;
+		center.x = (logSize.right - logSize.left) * 0.50f;
+		center.y = (logSize.bottom - logSize.top) * 0.50f;
+
+		float2 jitter;
+		float radius = JITTER_RADIUS * dpi / 96.0f;
+		do {
+			jitter.x = radius * (randf_s() * 2.f - 1.f);
+			jitter.y = radius * (randf_s() * 2.f - 1.f);
+		} while ((jitter.x * jitter.x + jitter.y * jitter.y) > radius);
+
+		if (fullscreen) jitter = float2(0.f, 0.f);
+
+		// Apply jitter
+		center = center + jitter;
+
+		centerRect =
+		{
+			center.x - size * 0.50f,
+			center.y - size * 0.50f,
+			center.x + size * 0.50f,
+			center.y + size * 0.50f
+		};
+	}
   
     switch (m_currentColor)
     {
@@ -3819,24 +3859,73 @@ void Game::GenerateTestPattern_RiseFallTime(ID2D1DeviceContext2 * ctx) //*******
 //  float nits = m_outputDesc.MaxLuminance;
 //	float avg = nits * 0.1f; // 10% screen area
 	float nits = m_outputDesc.MaxLuminance;
-	float avg = m_outputDesc.MaxLuminance*0.10f;
+	float patchPCT = PATCHPCT;
+	float avg = m_outputDesc.MaxLuminance*patchPCT;
+
 	if (m_newTestSelected) SetMetadata(nits, avg, GAMUT_Native);
-    float c = nitstoCCCS( nits );
-
-    ComPtr<ID2D1SolidColorBrush> peakBrush;
-    DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &peakBrush));
-
+    
     auto logSize = m_deviceResources->GetLogicalSize();
-    D2D1_RECT_F tenPercentRect =
-    {
-        (logSize.right - logSize.left) * (0.5f - sqrtf(0.1) / 2.0f),
-        (logSize.bottom - logSize.top) * (0.5f - sqrtf(0.1) / 2.0f),
-        (logSize.right - logSize.left) * (0.5f + sqrtf(0.1) / 2.0f),
-        (logSize.bottom - logSize.top) * (0.5f + sqrtf(0.1) / 2.0f)
-    };
+	float dpi = m_deviceResources->GetDpi();
+
+	// draw a starfield background
+	float starNits = min(nits, 100.f);							// clamp nits to max of 100
+	ComPtr<ID2D1SolidColorBrush> starBrush;
+	D2D1_ELLIPSE ellipse;
+	float pixels = 0;
+	srand(314158);												// seed the starfield rng
+	for (int i = 1; i < 2000; i++)
+	{
+		float s = nitstoCCCS((randf()) * starNits);
+		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(s, s, s), &starBrush));
+
+		float2 center = float2(logSize.right * randf(), logSize.bottom * randf());
+		float fRad = randf() * randf() * randf() * 19.f + 1.f;
+		ellipse =
+		{
+			D2D1::Point2F(center.x, center.y),
+			fRad, fRad
+		};
+		ctx->FillEllipse(&ellipse, starBrush.Get());
+
+		pixels += M_PI_F * fRad * fRad * s;
+
+	}
+	float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
+	float APL = pixels / area;
+
+	float c = nitstoCCCS(nits);
+	ComPtr<ID2D1SolidColorBrush> centerBrush;
+	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &centerBrush));
+
+	float size = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top));
+	float patchPct = PATCHPCT;
+	size = size * sqrtf(patchPct);  // dimensions for a square of this % screen area
+	float2 center;
+	center.x = (logSize.right - logSize.left) * 0.50f;
+	center.y = (logSize.bottom - logSize.top) * 0.50f;
+
+	float2 jitter;
+	float radius = JITTER_RADIUS * dpi / 96.0f;
+
+	do {
+		jitter.x = radius * (randf_s() * 2.f - 1.f);
+		jitter.y = radius * (randf_s() * 2.f - 1.f);
+	} while ((jitter.x * jitter.x + jitter.y * jitter.y) > radius);
+
+	// Apply jitter
+	center = center + jitter;
+
+	D2D1_RECT_F centerRect =
+	{
+		center.x - size * 0.50f,
+		center.y - size * 0.50f,
+		center.x + size * 0.50f,
+		center.y + size * 0.50f
+	};
+	ctx->FillRectangle(&centerRect, centerBrush.Get());
 
     if (m_flashOn)
-        ctx->FillRectangle(&tenPercentRect, peakBrush.Get());
+        ctx->FillRectangle(&centerRect, centerBrush.Get());
 
     if (m_showExplanatoryText)
     {
@@ -3953,8 +4042,8 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 	srand(314158);												// seed the starfield rng
 	for (int i = 1; i < 2000; i++)
 	{
-		c = nitstoCCCS((randf()) * starNits );
-		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &starBrush) );
+		float s = nitstoCCCS((randf()) * starNits );
+		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(s, s, s), &starBrush) );
 
 		float2 center = float2(logSize.right * randf(), logSize.bottom * randf() );
 		float fRad = randf() * randf() * randf() * 19.f + 1.f;
@@ -3965,11 +4054,21 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 		};
 		ctx->FillEllipse(&ellipse, starBrush.Get());
 
-		pixels += M_PI_F * fRad * fRad * c;
+		pixels += M_PI_F * fRad * fRad * s;
 
 	}
 	float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
 	float APL = pixels / area;
+
+	ComPtr<ID2D1SolidColorBrush> centerBrush;
+	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &centerBrush));
+
+	float size = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top));
+	float patchPct = PATCHPCT;
+	size = size * sqrtf(patchPct);  // dimensions for a square of this % screen area
+	float2 center;
+	center.x = (logSize.right - logSize.left) * 0.50f;
+	center.y = (logSize.bottom - logSize.top) * 0.50f;
 
 	float2 jitter;
 	float radius = JITTER_RADIUS * dpi / 96.0f;
@@ -3979,15 +4078,17 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 		jitter.y = radius * (randf_s() * 2.f - 1.f);
 	} while ((jitter.x * jitter.x + jitter.y * jitter.y) > radius);
 
-	float patchPct = 0.10f;		// Area of patch as percentage of screen area
-	D2D1_RECT_F tenPercentRect =
+	// Apply jitter
+	center = center + jitter;
+
+	D2D1_RECT_F centerRect =
 	{
-		(logSize.right - logSize.left) * (0.5f - sqrtf(patchPct) / 2.0f) + jitter.x,
-		(logSize.bottom - logSize.top) * (0.5f - sqrtf(patchPct) / 2.0f) + jitter.y,
-		(logSize.right - logSize.left) * (0.5f + sqrtf(patchPct) / 2.0f) + jitter.x,
-		(logSize.bottom - logSize.top) * (0.5f + sqrtf(patchPct) / 2.0f) + jitter.y
+		center.x - size * 0.50f,
+		center.y - size * 0.50f,
+		center.x + size * 0.50f,
+		center.y + size * 0.50f
 	};
-	ctx->FillRectangle(&tenPercentRect, peakBrush.Get());
+	ctx->FillRectangle(&centerRect, centerBrush.Get());
 
 	float PQcheck = Apply2084(c * 80.f * BRIGHTNESS_SLIDER_FACTOR / 10000.f) * 1023.f;
 
@@ -4297,12 +4398,11 @@ void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	      
 	// draw a starfield background
 	ComPtr<ID2D1SolidColorBrush> starBrush;
 	D2D1_ELLIPSE ellipse;
-	float c, pixels = 0;
-//	srand(314158);											// seed the starfield rng
+	float pixels = 0;
 	for (int i = 1; i < 2000; i++)
 	{
-		c = nitstoCCCS((randf()) * 9.f + 1.f);
-		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &starBrush));
+		float s = nitstoCCCS((randf()) * 9.f + 1.f);
+		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(s, s, s), &starBrush));
 
 		float2 center = float2(logSize.right * randf(), logSize.bottom * randf());
 		float fRad = randf() * randf() * randf() * 19.f + 1.f;
@@ -4313,13 +4413,14 @@ void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	      
 		};
 		ctx->FillEllipse(&ellipse, starBrush.Get());
 
-		pixels += M_PI_F * fRad * fRad * c;
+		pixels += M_PI_F * fRad * fRad * s;
 
 	}
 	float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
 	float APL = pixels / area;
 
-	float nits = 5.0f;		// background gray
+	float nits = 10.0f;		// per specification
+	float c;
 	c = nitstoCCCS(nits) / BRIGHTNESS_SLIDER_FACTOR;
 
 	float avg = nits * 1.1f;
@@ -4327,26 +4428,41 @@ void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	      
 		SetMetadata(m_outputDesc.MaxLuminance, avg, GAMUT_Native);
 
 	// the center patch
-	nits = 10.0f;			// dark gray
-	c = nitstoCCCS(nits) / BRIGHTNESS_SLIDER_FACTOR;
-	ComPtr<ID2D1SolidColorBrush> patchBrush;
-	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &patchBrush));
+	ComPtr<ID2D1SolidColorBrush> centerBrush;
+	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &centerBrush));
 
-	float patchPct = 0.08;				// fraction of screen area
-	D2D1_RECT_F patchRect =
+	float size = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top));
+	float patchPct = PATCHPCT;
+	size = size * sqrtf(patchPct);  // dimensions for a square of this % screen area
+	float2 center;
+	center.x = (logSize.right - logSize.left) * 0.50f;
+	center.y = (logSize.bottom - logSize.top) * 0.50f;
+
+	float dpi = m_deviceResources->GetDpi();
+	float2 jitter;
+	float radius = JITTER_RADIUS * dpi / 96.0f;
+	do {
+		jitter.x = radius * (randf_s() * 2.f - 1.f);
+		jitter.y = radius * (randf_s() * 2.f - 1.f);
+	} while ((jitter.x * jitter.x + jitter.y * jitter.y) > radius);
+
+	// Apply jitter
+	center = center + jitter;
+
+	D2D1_RECT_F centerRect =
 	{
-		(logSize.right - logSize.left) * (0.5f - sqrtf(patchPct) / 2.0f),
-		(logSize.bottom - logSize.top) * (0.5f - sqrtf(patchPct) / 2.0f),
-		(logSize.right - logSize.left) * (0.5f + sqrtf(patchPct) / 2.0f),
-		(logSize.bottom - logSize.top) * (0.5f + sqrtf(patchPct) / 2.0f)
+		center.x - size * 0.50f,
+		center.y - size * 0.50f,
+		center.x + size * 0.50f,
+		center.y + size * 0.50f
 	};
-	ctx->FillRectangle( &patchRect, patchBrush.Get() );
+	ctx->FillRectangle(&centerRect, centerBrush.Get());
 
 	if (m_subTitleVisible & 0x01)
 	{
 		// set the sub title color
-		nits = 200.0f;			// bright white
-		c = nitstoCCCS(nits) / BRIGHTNESS_SLIDER_FACTOR;
+		float textNits = 200.0f;			// bright white
+		float c = nitstoCCCS(textNits) / BRIGHTNESS_SLIDER_FACTOR;
 
 		ComPtr<ID2D1SolidColorBrush> subTitleBrush;
 		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &subTitleBrush));
@@ -4445,32 +4561,64 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 	colorCCCS = colorCCCS * (float)(0.01f * WhiteLevelBrackets[m_whiteLevelBracket]);
 
 
-	// create D2D brush of this color
-	ComPtr<ID2D1SolidColorBrush> xrBrush;
-	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(colorCCCS.r, colorCCCS.g, colorCCCS.b), &xrBrush));
-
 	float nits = Remove2084( 1023.f / 1023.0f) * 10000.0f;		// go to linear space
 //	float c = nitstoCCCS(nits / BRIGHTNESS_SLIDER_FACTOR);		// scale by 80 and slider
 
-	float dpi = m_deviceResources->GetDpi();
 	auto logSize = m_deviceResources->GetLogicalSize();
+	float pixels = 0;
+	D2D1_ELLIPSE ellipse;
+	ComPtr<ID2D1SolidColorBrush> starBrush;
+	float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
+	for (int i = 1; i < 2000; i++)
+	{
+		float s = nitstoCCCS((randf()) * 9.f + 1.f);
+		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(s, s, s), &starBrush));
 
+		float2 center = float2(logSize.right * randf(), logSize.bottom * randf());
+		float fRad = randf() * randf() * randf() * 19.f + 1.f;
+		ellipse =
+		{
+			D2D1::Point2F(center.x, center.y),
+			fRad, fRad
+		};
+		ctx->FillEllipse(&ellipse, starBrush.Get());
+
+		pixels += M_PI_F * fRad * fRad * s;
+
+	}
+	float APL = pixels / area;
+
+
+	// create D2D brush of this color
+	ComPtr<ID2D1SolidColorBrush> centerBrush;
+	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(colorCCCS.r, colorCCCS.g, colorCCCS.b), &centerBrush));
+
+	float size = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top));
+	float patchPct = PATCHPCT;
+	size = size * sqrtf(patchPct);  // dimensions for a square of this % screen area
+	float2 center;
+	center.x = (logSize.right - logSize.left) * 0.50f;
+	center.y = (logSize.bottom - logSize.top) * 0.50f;
+
+	float dpi = m_deviceResources->GetDpi();
 	float2 jitter;
 	float radius = JITTER_RADIUS * dpi / 96.0f;
-
 	do {
 		jitter.x = radius * (randf_s() * 2.f - 1.f);
 		jitter.y = radius * (randf_s() * 2.f - 1.f);
 	} while ((jitter.x * jitter.x + jitter.y * jitter.y) > radius);
 
-	D2D1_RECT_F tenPercentRect =
+	// Apply jitter
+	center = center + jitter;
+
+	D2D1_RECT_F centerRect =
 	{
-		(logSize.right - logSize.left) * (0.5f - sqrtf(0.1) / 2.0f) + jitter.x,
-		(logSize.bottom - logSize.top) * (0.5f - sqrtf(0.1) / 2.0f) + jitter.y,
-		(logSize.right - logSize.left) * (0.5f + sqrtf(0.1) / 2.0f) + jitter.x,
-		(logSize.bottom - logSize.top) * (0.5f + sqrtf(0.1) / 2.0f) + jitter.y
+		center.x - size * 0.50f,
+		center.y - size * 0.50f,
+		center.x + size * 0.50f,
+		center.y + size * 0.50f
 	};
-	ctx->FillRectangle(&tenPercentRect, xrBrush.Get());
+	ctx->FillRectangle(&centerRect, centerBrush.Get());
 
 	if (m_showExplanatoryText)
 	{
@@ -4499,6 +4647,7 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 		title << setw(6) << XRite[m_currentXRiteIndex].RGB;
 		title << setbase(10) << L"\n White Level: ";
 		title << WhiteLevelBrackets[m_whiteLevelBracket];
+		title << L" - use [ ] to select bracket";
 		if (m_XRitePatchAutoMode)
 			title << "\nAuto changing every "<< m_XRitePatchDisplayTime << "sec";
 
@@ -5028,11 +5177,11 @@ void Game::Render()
 	case TestPattern::ActiveDimmingSplit:								// 5.3
 		GenerateTestPattern_ActiveDimmingSplit(ctx);
 		break;
-	case TestPattern::ColorPatches10:									// 6. with 10% screen coverage
-		GenerateTestPattern_ColorPatches(ctx, 0.10f);
+	case TestPattern::ColorPatches:										// 6. with 10% screen coverage
+		GenerateTestPattern_ColorPatches(ctx, false);
 		break;
-	case TestPattern::ColorPatches:										// 6. with 100% screen coverage
-		GenerateTestPattern_ColorPatches(ctx, 1.00f);
+	case TestPattern::ColorPatchesFull:									// 6. with 100% screen coverage
+		GenerateTestPattern_ColorPatches(ctx, true );
 		break;
     case TestPattern::BitDepthPrecision:								// 7.
         GenerateTestPattern_BitDepthPrecision(ctx);
@@ -5598,9 +5747,10 @@ void Game::ChangeSubtest( INT32 increment )
 		}
 		break;
 
-	case TestPattern::ColorPatches:						// These all rotate among R, G, B, and W.
-	case TestPattern::ColorPatches10:
-	case TestPattern::ColorPatchesMAX:
+	// These all rotate among R, G, B, and W.
+	case TestPattern::ColorPatches:						// square patch in center			
+	case TestPattern::ColorPatchesFull:					// for fullscreen case
+	case TestPattern::ColorPatchesMAX:					// legacy
 	case TestPattern::ColorPatches709:
 	case TestPattern::FullFrameSDRWhite:
 	case TestPattern::FullFrameSDRWhiteWithHDR:
