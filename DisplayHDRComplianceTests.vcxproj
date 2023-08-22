@@ -304,6 +304,7 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="BackgroundNoiseEffect.h" />
     <ClInclude Include="BandedGradientEffect.h" />
     <ClInclude Include="BasicMath.h" />
     <ClInclude Include="ColorSpaces.h" />
@@ -315,6 +316,7 @@
     <ClInclude Include="ToneSpikeEffect.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="BackgroundNoiseEffect.cpp" />
     <ClCompile Include="BandedGradientEffect.cpp" />
     <ClCompile Include="DeviceResources.cpp" />
     <ClCompile Include="Game.cpp" />
@@ -340,6 +342,27 @@
     <Manifest Include="settings.manifest" />
   </ItemGroup>
   <ItemGroup>
+    <FxCompile Include="BackgroundNoiseEffect.hlsl">
+      <FileType>Document</FileType>
+      <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(WindowsSDK_IncludePath)</AdditionalIncludeDirectories>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>
+      <CompileD2DCustomEffect Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</CompileD2DCustomEffect>
+      <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(WindowsSDK_IncludePath)</AdditionalIncludeDirectories>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
+      <CompileD2DCustomEffect Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</CompileD2DCustomEffect>
+      <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(WindowsSDK_IncludePath)</AdditionalIncludeDirectories>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Pixel</ShaderType>
+      <CompileD2DCustomEffect Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</CompileD2DCustomEffect>
+      <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(WindowsSDK_IncludePath)</AdditionalIncludeDirectories>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
+      <CompileD2DCustomEffect Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</CompileD2DCustomEffect>
+      <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</DeploymentContent>
+      <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</DeploymentContent>
+      <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</DeploymentContent>
+      <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</DeploymentContent>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">5.0</ShaderModel>
+    </FxCompile>
     <FxCompile Include="SineSweepEffect.hlsl">
       <FileType>Document</FileType>
       <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(WindowsSDK_IncludePath)</AdditionalIncludeDirectories>

@@ -17,6 +17,7 @@
 //#include "BasicMath.h"
 #include "ColorSpaces.h"
 #include "Game.h"
+#include "BackgroundNoiseEffect.h"
 #include "BandedGradientEffect.h"
 #include "SineSweepEffect.h"
 #include "ToneSpikeEffect.h"
@@ -28,7 +29,7 @@
 #define BRIGHTNESS_SLIDER_FACTOR (m_rawOutDesc.MaxLuminance / m_outputDesc.MaxLuminance)
 
 #define PATCHPCT (0.08f)
-#define NUMXRITECOLORS (95.f)
+#define NUMXRITECOLORS (97.f)
 struct XriteColors		// provided courtesy of Portrait X-Rite(TM) calibration technology
 {
 	int num;
@@ -39,9 +40,10 @@ struct XriteColors		// provided courtesy of Portrait X-Rite(TM) calibration tech
 	double X, Y, Z;		// (CIE 1931 2ø)
 } XRite[] = {
 //n row col    RRGGBB      R          G           B         X             Y             Z
+//0, 0, '-', 0xFFFFFF,  1.000000, 1.000000, 1.000000, 100.000000000,100.000000000,100.000000000,
   1, 1, 'A', 0xF4F6F3,  0.498834, 0.499625, 0.497344,  86.533211290, 91.585525820, 97.878649400,
   2, 1, 'B', 0x818181,  0.364688, 0.364859, 0.365180,  20.792432080, 21.884200640, 23.925671570,
-  3, 1, 'C', 0x3C3C3B,  0.240312, 0.240033, 0.239499,   4.256057219,  4.474643989,  4.833733497,
+  3, 1, 'C', 0x3C3C3B,  0.240312, 0.240033, 0.239499,   4.256057219,  4.474643989,  4.833733497,  // skip 4-15
  16, 2, 'B', 0x933E6E,  0.359104, 0.268128, 0.332106,  16.526303580, 10.753371090, 16.008163310,
  17, 2, 'C', 0x55445F,  0.283570, 0.261789, 0.306806,   7.899895441,  6.898727382, 11.774254880,
  18, 2, 'D', 0xCCD6E3,  0.462816, 0.468296, 0.480466,  62.735330580, 66.451241440, 82.240083590,
@@ -53,7 +55,7 @@ struct XriteColors		// provided courtesy of Portrait X-Rite(TM) calibration tech
  24, 2, 'J', 0x65BEAD,  0.383048, 0.437697, 0.423882,  31.263243540, 42.546305730, 45.948413660,
  25, 2, 'K', 0xF2CFB8,  0.483620, 0.464457, 0.440228,  67.553141900, 67.104629060, 54.824288420,
  26, 2, 'L', 0x6E3D46,  0.311767, 0.254055, 0.263454,   9.248634896,  7.123491009,  6.742289138,
- 27, 2, 'M', 0xBC3F64,  0.403831, 0.284703, 0.318748,  24.886900670, 15.231543150, 13.686284150,
+ 27, 2, 'M', 0xBC3F64,  0.403831, 0.284703, 0.318748,  24.886900670, 15.231543150, 13.686284150,  // skip 28, 29
  30, 3, 'B', 0xB88BB9,  0.420486, 0.384844, 0.433509,  37.638886490, 32.008638080, 50.160484400,
  31, 3, 'C', 0x7266A6,  0.341450, 0.326192, 0.408593,  18.644913870, 15.907477420, 38.201392190,
  32, 3, 'D', 0xEFCDD6,  0.482344, 0.462548, 0.468715,  69.637304040, 67.011486060, 73.044700990,
@@ -65,7 +67,7 @@ struct XriteColors		// provided courtesy of Portrait X-Rite(TM) calibration tech
  38, 3, 'J', 0xE2A22D,  0.456973, 0.415694, 0.269431,  44.613171700, 42.127022240,  8.225577179,
  39, 3, 'K', 0xC6EBD5,  0.466355, 0.486926, 0.469523,  64.899359280, 76.071553550, 74.137955910,
  40, 3, 'L', 0xCA3C3C,  0.416690, 0.285280, 0.254187,  26.901992700, 16.175839940,  6.031991297,
- 41, 3, 'M', 0x603C50,  0.293062, 0.247799, 0.280432,   7.891606323,  6.263674361,  8.412485400,
+ 41, 3, 'M', 0x603C50,  0.293062, 0.247799, 0.280432,   7.891606323,  6.263674361,  8.412485400,  // skip 42, 43
  44, 4, 'B', 0x7C3B91,  0.334272, 0.257589, 0.380366,  14.984765510,  9.453061058, 27.850117650,
  45, 4, 'C', 0x324A74,  0.247897, 0.269742, 0.338992,   6.899378575,  6.859692772, 17.368376520,
  46, 4, 'D', 0xB0E0D5,  0.448749, 0.475551, 0.468542,  56.546648740, 67.176637550, 73.170544650,
@@ -77,7 +79,7 @@ struct XriteColors		// provided courtesy of Portrait X-Rite(TM) calibration tech
  52, 4, 'J', 0x008AA9,  0.288986, 0.371841, 0.414080,  15.367801500, 20.604087770, 40.791705610,
  53, 4, 'K', 0xDBD3E0,  0.471163, 0.466250, 0.478069,  65.832282760, 66.887123200, 80.264910000,
  54, 4, 'L', 0xCF8295,  0.435661, 0.376770, 0.392828,  39.022037260, 31.281204360, 32.516169310,
- 55, 4, 'M', 0xBD3749,  0.402886, 0.273609, 0.274269,  23.574967010, 14.052860450,  7.823662074,
+ 55, 4, 'M', 0xBD3749,  0.402886, 0.273609, 0.274269,  23.574967010, 14.052860450,  7.823662074,  // skip 56, 57
  58, 5, 'B', 0x1589CC,  0.309459, 0.371737, 0.451158,  20.087209920, 22.344742210, 60.110134410,
  59, 5, 'C', 0x55A2CB,  0.358090, 0.406097, 0.452458,  27.505824980, 32.203205660, 61.229380280,
  60, 5, 'D', 0xF1CECA,  0.483452, 0.463290, 0.457837,  69.059715320, 67.146317300, 65.498748310,
@@ -87,7 +89,7 @@ struct XriteColors		// provided courtesy of Portrait X-Rite(TM) calibration tech
  66, 5, 'J', 0x434445,  0.257156, 0.258030, 0.260185,   5.464348778,  5.756852478,  6.462477420,
  67, 5, 'K', 0xB4DCE2,  0.450069, 0.472251, 0.479783,  58.061821080, 66.239982950, 81.760975930,
  68, 5, 'L', 0xD58482,  0.441048, 0.379923, 0.370181,  39.789279170, 32.226929400, 25.408667110,
- 69, 5, 'M', 0xE74D48,  0.445733, 0.317605, 0.280531,  36.849623790, 22.849407730,  8.634066840,
+ 69, 5, 'M', 0xE74D48,  0.445733, 0.317605, 0.280531,  36.849623790, 22.849407730,  8.634066840,  // skip 70, 71
  72, 6, 'B', 0x32A8C3,  0.344687, 0.411823, 0.444856,  25.228780790, 32.684552730, 56.694721920,
  73, 6, 'C', 0x284E5F,  0.238055, 0.276002, 0.307405,   5.692425950,  6.780516852, 11.897590810,
  74, 6, 'D', 0xCFDAA5,  0.463829, 0.471380, 0.421437,  57.590018830, 66.018199150, 45.368799830,
@@ -98,7 +100,7 @@ struct XriteColors		// provided courtesy of Portrait X-Rite(TM) calibration tech
  80, 6, 'J', 0xE0E1E1,  0.479188, 0.479766, 0.480139,  71.247395410, 75.107046350, 82.206832430,
  81, 6, 'K', 0xB2B2B3,  0.429090, 0.429287, 0.430159,  42.317392640, 44.512028860, 48.915528100,
  82, 6, 'L', 0xF4752D,  0.462019, 0.368007, 0.253055,  44.131007750, 32.177121340,  6.344859403,
- 83, 6, 'M', 0xFFBC31,  0.493019, 0.447417, 0.290890,  64.079413780, 59.655086600, 10.992190490,
+ 83, 6, 'M', 0xFFBC31,  0.493019, 0.447417, 0.290890,  64.079413780, 59.655086600, 10.992190490,  // skip 84, 85
  86, 7, 'B', 0x2B4F4F,  0.240023, 0.277619, 0.279228,   5.230441806,  6.723176467,  8.352868857,
  87, 7, 'C', 0x759ECF,  0.376705, 0.402414, 0.456569,  30.780046770, 32.682966400, 63.818882210,
  88, 7, 'D', 0xD38866,  0.439892, 0.384637, 0.334056,  38.254848490, 32.547350950, 16.965111700,
@@ -110,7 +112,7 @@ struct XriteColors		// provided courtesy of Portrait X-Rite(TM) calibration tech
  94, 7, 'J', 0xD09078,  0.439537, 0.393557, 0.357762,  39.377642320, 34.722317270, 22.252946180,
  95, 7, 'K', 0x777777,  0.350299, 0.350419, 0.350463,  17.591371710, 18.517812990, 20.183763000,
  96, 7, 'L', 0xC1BA0C,  0.439649, 0.437897, 0.254956,  39.620944430, 46.434482250,  7.229951406,
- 97, 7, 'M', 0xF4C904,  0.480913, 0.457776, 0.269437,  58.281188360, 61.077446520,  8.830551879,
+ 97, 7, 'M', 0xF4C904,  0.480913, 0.457776, 0.269437,  58.281188360, 61.077446520,  8.830551879,  // skip 98, 99
 100, 8, 'B', 0x18ABAB,  0.336325, 0.414111, 0.419404,  22.226046050, 32.146142550, 43.556240210,
 101, 8, 'C', 0x009690,  0.291845, 0.387396, 0.385725,  14.523757570, 23.159776430, 30.192359560,
 102, 8, 'D', 0xC89684,  0.434688, 0.399257, 0.374270,  38.792469530, 35.648401980, 26.754607140,
@@ -122,7 +124,7 @@ struct XriteColors		// provided courtesy of Portrait X-Rite(TM) calibration tech
 108, 8, 'J', 0xD29879,  0.443156, 0.402747, 0.361315,  41.209678110, 37.455523660, 23.238538180,
 109, 8, 'K', 0x494A4A,  0.269673, 0.269785, 0.271010,   6.443906197,  6.770644576,  7.488444555,
 110, 8, 'L', 0xB39A45,  0.417464, 0.401490, 0.291054,  31.266612070, 33.197161740, 10.425517790,
-111, 8, 'M', 0xB1BA2C,  0.427692, 0.436537, 0.275347,  36.057458440, 44.517234190,  9.083313607,
+111, 8, 'M', 0xB1BA2C,  0.427692, 0.436537, 0.275347,  36.057458440, 44.517234190,  9.083313607,  // skip 112, 113
 114, 9, 'B', 0x4D4841,  0.272895, 0.267784, 0.253529,   6.360790471,  6.640126351,  5.930663147,
 115, 9, 'C', 0x58AB77,  0.358377, 0.414806, 0.358557,  21.892603240, 32.388512910, 22.671978430,
 116, 9, 'D', 0x00966B,  0.303113, 0.387440, 0.337556,  13.423201510, 22.836472970, 17.680583050,
@@ -184,7 +186,7 @@ void Game::ConstructorInternal()
 {
 	m_shiftKey = false;			// whether shift key is pressed
     m_currentTest = TestPattern::StartOfTest;
-    m_currentColor = 0;			// Which of R/G/B to test.
+	m_currentColor = 0;			// Which of R/G/B to test.
 	m_currentProfileTile = 0;	// which intensity profile tile we are on
 	m_maxPQCode = 1;
 	m_maxProfileTile = 1;
@@ -232,8 +234,9 @@ void Game::ConstructorInternal()
 
 	m_deviceResources = std::make_unique<DX::DeviceResources>();
 
-    m_testPatternResources[TestPattern::BitDepthPrecision] = TestPatternResources{ std::wstring(L"7. Bit-Depth/Precision")                    , std::wstring()                                , std::wstring(L"BandedGradientEffect.cso")    , CLSID_CustomBandedGradientEffect };
-    m_testPatternResources[TestPattern::SharpeningFilter]  = TestPatternResources{ std::wstring(L"Fresnel zone plate (sharpening test)")      , std::wstring()                                , std::wstring(L"SineSweepEffect.cso")         , CLSID_CustomSineSweepEffect };
+	m_testPatternResources[TestPattern::TenPercentPeak]    = TestPatternResources{ std::wstring(L"Background Noise")                          , std::wstring()                                , std::wstring(L"BackgroundNoiseEffect.cso")   , CLSID_CustomBackgroundNoiseEffect };
+	m_testPatternResources[TestPattern::BitDepthPrecision] = TestPatternResources{ std::wstring(L"7. Bit-Depth/Precision")                    , std::wstring()                                , std::wstring(L"BandedGradientEffect.cso")    , CLSID_CustomBandedGradientEffect };
+	m_testPatternResources[TestPattern::SharpeningFilter]  = TestPatternResources{ std::wstring(L"Fresnel zone plate (sharpening test)")      , std::wstring()                                , std::wstring(L"SineSweepEffect.cso")         , CLSID_CustomSineSweepEffect };
 	m_testPatternResources[TestPattern::ToneMapSpike]      = TestPatternResources{ std::wstring(L"ST.2084 Spike (Tone map test)")             , std::wstring()                                , std::wstring(L"ToneSpikeEffect.cso")         , CLSID_CustomToneSpikeEffect };
 	m_testPatternResources[TestPattern::OnePixelLinesBW]   = TestPatternResources{ std::wstring(L"Single pixel lines (black/white)")          , std::wstring(L"OnePixelLinesBW1200x700.png")  , std::wstring()                               , {} };
     m_testPatternResources[TestPattern::OnePixelLinesRG]   = TestPatternResources{ std::wstring(L"Single pixel lines (red/green)")            , std::wstring(L"OnePixelLinesRG1200x700.png")  , std::wstring()                               , {} };
@@ -479,6 +482,33 @@ void Game::Update(DX::StepTimer const& timer)
         }
         break;
 
+
+	case TestPattern::RiseFallTime:
+		if (m_newTestSelected)
+		{
+			m_testTimeRemainingSec = 3.0f;
+		}
+		else
+		{
+			m_testTimeRemainingSec -= static_cast<float>(timer.GetElapsedSeconds());
+			m_testTimeRemainingSec = std::max(0.0f, m_testTimeRemainingSec);
+			if (m_testTimeRemainingSec <= 0.0001)
+			{
+				if (!m_flashOn)
+				{
+					m_flashOn = true;
+					m_testTimeRemainingSec = 5;
+				}
+				else if (m_flashOn)
+				{
+					m_flashOn = false;
+					m_testTimeRemainingSec = 5;
+				}
+			}
+		}
+		break;
+
+
 	case TestPattern::XRiteColors:
 	{
 		if (m_newTestSelected)
@@ -510,31 +540,6 @@ void Game::Update(DX::StepTimer const& timer)
         // We don't know what internal EOTF is being used by the display, so how
         // do we draw a ruler that matches with anything but sRGB?
         endColor = D2D1::ColorF(0.25f, 0.25f, 0.25f);
-        break;
-
-    case TestPattern::RiseFallTime:
-        if (m_newTestSelected)
-        {
-            m_testTimeRemainingSec = 3.0f;
-        }
-        else
-        {
-            m_testTimeRemainingSec -= static_cast<float>(timer.GetElapsedSeconds());
-            m_testTimeRemainingSec = std::max(0.0f, m_testTimeRemainingSec);
-            if (m_testTimeRemainingSec <= 0.0001)
-            {
-                if (!m_flashOn)
-                {
-                    m_flashOn = true;
-                    m_testTimeRemainingSec = 5;
-                }
-                else if (m_flashOn)
-                {
-                    m_flashOn = false;
-                    m_testTimeRemainingSec = 5;
-                }
-            }
-        }
         break;
 
     case TestPattern::StaticGradient:
@@ -836,7 +841,7 @@ void Game::GenerateTestPattern_StartOfTest(ID2D1DeviceContext2* ctx)
     if (m_newTestSelected) SetMetadataNeutral();
 
     text << m_appTitle;
-    text << L"\n\nVersion 1.2 Beta 9\n\n";
+    text << L"\n\nVersion 1.2 Beta 10\n\n";
     //text << L"ALT-ENTER: Toggle fullscreen: all measurements should be made in fullscreen\n";
 	text << L"->, PAGE DN:       Move to next test\n";
 	text << L"<-, PAGE UP:        Move to previous test\n";
@@ -1824,10 +1829,11 @@ float randf_s()
 }
 
 #define JITTER_RADIUS 10.0f
-void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2* ctx) //********************** 1.
+void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2* ctx) //********************** 1.a
 {
 	float patchPct = PATCHPCT;			// patch percentage of screen area
 	auto logSize = m_deviceResources->GetLogicalSize();
+	std::wstringstream title;
 
 	// "tone map" PQ limit of 10k nits down to panel maxLuminance in CCCS
 	float nits = m_outputDesc.MaxLuminance;
@@ -1836,6 +1842,32 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2* ctx) //******
 		SetMetadata(nits, avg, GAMUT_Native);
 	}
 
+#if 1
+	// Draw the background noise effect
+	auto rsc = m_testPatternResources[TestPattern::TenPercentPeak];
+	if (!rsc.effectIsValid)
+	{
+		title << L"\nERROR: " << rsc.effectShaderFilename << L" is missing\n";
+	}
+	else
+	{
+		auto out = m_deviceResources->GetOutputSize();
+		D2D1_POINT_2F time = { m_totalTime, 0.f };
+
+		// init var.
+		float init = 30.0f;
+
+		// How many pixels before the wavelength halves.
+		float dist = (out.right - out.left) / 4.0f;
+
+		rsc.d2dEffect->SetValueByName(L"Center", time);
+		rsc.d2dEffect->SetValueByName(L"InitialWavelength", init);
+		rsc.d2dEffect->SetValueByName(L"WavelengthHalvingDistance", dist);
+		rsc.d2dEffect->SetValueByName(L"WhiteLevelMultiplier", nitstoCCCS(185));
+
+		ctx->DrawImage(rsc.d2dEffect.Get());
+	}
+#else
 	// draw a starfield background
 	ComPtr<ID2D1SolidColorBrush> starBrush;
 	D2D1_ELLIPSE ellipse;
@@ -1860,6 +1892,7 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2* ctx) //******
 	}
 	float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
 	float APL = pixels / area;
+#endif
 
 	// draw the center rectangle
 	float c;
@@ -1893,44 +1926,6 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2* ctx) //******
 		center.y + size * 0.50f
 	};
 	ctx->FillRectangle(&centerRect, centerBrush.Get());
-
-#if 0
-//	Not clear whether to use an image or a bitmap
-// dont know how to get teh D2D RT instaed of the D3D one (I thought they were the same)	
-// Create bitmap
-	D2D1_SIZE_U ImageSize =
-	{
-		(logSize.right - logSize.left),
-		(logSize.bottom - logSize.top)
-	};
-	ID2D1Bitmap1 *bitmap;
-	ctx->CreateBitmap(ImageSize, NULL, 0, 0, &bitmap);
-	ctx->CreateImage();
-
-		hr = m_d2dFactory->CreateHwndRenderTarget(
-			D2D1::RenderTargetProperties(),
-			D2D1::HwndRenderTargetProperties(m_window, size),
-			&m_pD2DRenderTarget
-		);
-
-	// Create a perlin noise bitmap effect
-	ID2D1Effect* noiseEffect = nullptr;
-	ctx->CreateEffect( CLSID_D2D1Turbulence, &noiseEffect);
-	noiseEffect->SetInput( 0, bitmap.Get());
-	noiseEffect->SetValue(D2D1_TURBULENCE_PROP_NOISE, D2D1_TURBULENCE_NOISE_FRACTAL_SUM);
-	noiseEffect->SetValue(D2D1_TURBULENCE_PROP_BASE_FREQUENCY, D2D1::Vector2F(0.01f, 0.01f) );
-	noiseEffect->SetValue(D2D1_TURBULENCE_PROP_NUM_OCTAVES, 1 );
-	noiseEffect->SetValue(D2D1_TURBULENCE_PROP_OFFSET, D2D1::Vector2F(0, 0));
-//	ctx->FillOpacityMask(noiseEffect, nullptr, tenPercentRect);
-
-	// Draw the effect applied to the image
-	ctx->DrawImage( noiseEffect.Get(), D2D1_INTERPOLATION_MODE_LINEAR);
-	auto renderTarget = m_deviceResources->GetRenderTargetView();  //this returns the D3D RT
-	renderTarget->DrawBitmap(noiseEffect->GetInput(), logSize);
-
-
-#endif
-
 
     if (m_showExplanatoryText)
     {
@@ -1977,13 +1972,40 @@ void Game::GenerateTestPattern_TenPercentPeakMAX(ID2D1DeviceContext2 * ctx) //**
 		srand(314159);
 	}
 
-    float c = nitstoCCCS(nits);
-
-    ComPtr<ID2D1SolidColorBrush> peakBrush;
-    DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &peakBrush));
+	float c = nitstoCCCS(nits);
 
 	float dpi = m_deviceResources->GetDpi();
     auto logSize = m_deviceResources->GetLogicalSize();
+	std::wstringstream title;
+
+	// Draw the background noise effect
+	auto rsc = m_testPatternResources[TestPattern::TenPercentPeak];
+	if (!rsc.effectIsValid)
+	{
+		title << L"\nERROR: " << rsc.effectShaderFilename << L" is missing\n";
+	}
+	else
+	{
+		auto out = m_deviceResources->GetOutputSize();
+		D2D1_POINT_2F time = { m_totalTime, 0.f };
+
+		// init var.
+		float init = 30.0f;
+
+		// How many pixels before the wavelength halves.
+		float dist = (out.right - out.left) / 4.0f;
+
+		rsc.d2dEffect->SetValueByName(L"Center", time );
+		rsc.d2dEffect->SetValueByName(L"InitialWavelength", init);
+		rsc.d2dEffect->SetValueByName(L"WavelengthHalvingDistance", dist);
+		rsc.d2dEffect->SetValueByName(L"WhiteLevelMultiplier", nitstoCCCS(185));
+
+		ctx->DrawImage(rsc.d2dEffect.Get());
+	}
+
+	// draw the center white square of the correct intensity
+	ComPtr<ID2D1SolidColorBrush> peakBrush;
+	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &peakBrush));
 
 	float patchPct = PATCHPCT;		// patch percentage of screen area
 	float size = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top));
@@ -2026,7 +2048,6 @@ void Game::GenerateTestPattern_TenPercentPeakMAX(ID2D1DeviceContext2 * ctx) //**
 		};
 		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2 );
 
-        std::wstringstream title;
 		title << fixed << setw(8) << setprecision(2);
 		title << L"1.b Peak Luminance MAX @ ";
 		title << patchPct*100.f << L"% screen area\nWait before taking measurements: ";
@@ -3866,6 +3887,33 @@ void Game::GenerateTestPattern_RiseFallTime(ID2D1DeviceContext2 * ctx) //*******
     
     auto logSize = m_deviceResources->GetLogicalSize();
 	float dpi = m_deviceResources->GetDpi();
+	std::wstringstream title;
+
+#if 0
+	// Draw the background noise effect
+	auto rsc = m_testPatternResources[TestPattern::TenPercentPeak];
+	if (!rsc.effectIsValid)
+	{
+		title << L"\nERROR: " << rsc.effectShaderFilename << L" is missing\n";
+	}
+	else
+	{
+		auto out = m_deviceResources->GetOutputSize();
+		D2D1_POINT_2F time = { m_totalTime, 0.f };
+
+		// init var.
+		float init = 30.0f;
+
+		// How many pixels before the wavelength halves.
+		float dist = (out.right - out.left) / 4.0f;
+
+		rsc.d2dEffect->SetValueByName(L"Center", time);
+		rsc.d2dEffect->SetValueByName(L"InitialWavelength", init);
+		rsc.d2dEffect->SetValueByName(L"WavelengthHalvingDistance", dist);
+		rsc.d2dEffect->SetValueByName(L"WhiteLevelMultiplier", nitstoCCCS(185));
+
+		ctx->DrawImage(rsc.d2dEffect.Get());
+	}
 
 	// draw a starfield background
 	float starNits = min(nits, 100.f);							// clamp nits to max of 100
@@ -3892,7 +3940,9 @@ void Game::GenerateTestPattern_RiseFallTime(ID2D1DeviceContext2 * ctx) //*******
 	}
 	float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
 	float APL = pixels / area;
+#endif
 
+	// draw center square
 	float c = nitstoCCCS(nits);
 	ComPtr<ID2D1SolidColorBrush> centerBrush;
 	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &centerBrush));
@@ -3922,15 +3972,12 @@ void Game::GenerateTestPattern_RiseFallTime(ID2D1DeviceContext2 * ctx) //*******
 		center.x + size * 0.50f,
 		center.y + size * 0.50f
 	};
-	ctx->FillRectangle(&centerRect, centerBrush.Get());
 
     if (m_flashOn)
         ctx->FillRectangle(&centerRect, centerBrush.Get());
 
     if (m_showExplanatoryText)
     {
-
-        std::wstringstream title;
 		title << fixed << setw(8) << setprecision(2);
 
         title << L"8. Rise/Fall Time";
@@ -3940,7 +3987,7 @@ void Game::GenerateTestPattern_RiseFallTime(ID2D1DeviceContext2 * ctx) //*******
 		title << setprecision(0);
         title << Apply2084(c*80.f*BRIGHTNESS_SLIDER_FACTOR / 10000.f) * 1023.f;
         title << L"\n";
-        title << m_testTimeRemainingSec;
+        title << setprecision(2) << m_testTimeRemainingSec;
         title << L" seconds remaining";
         title << L"\n" << m_hideTextString;
 
@@ -4027,6 +4074,8 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 
 	float dpi = m_deviceResources->GetDpi();
 	auto logSize = m_deviceResources->GetLogicalSize();
+	std::wstringstream title;
+
 
 	// "tone map" PQ limit of 10k nits down to panel maxLuminance in CCCS
 	float avg = nits * 0.1f;								// 10% screen area
@@ -4034,32 +4083,33 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 		SetMetadata(nits, avg, GAMUT_Native);
 	}
 
-	// draw a starfield background
-	float starNits = min(nits, 100.f);							// clamp nits to max of 100
-	ComPtr<ID2D1SolidColorBrush> starBrush;
-	D2D1_ELLIPSE ellipse;
-	float pixels = 0;
-	srand(314158);												// seed the starfield rng
-	for (int i = 1; i < 2000; i++)
+	// Draw the background noise effect
+	auto rsc = m_testPatternResources[TestPattern::TenPercentPeak];
+	if (!rsc.effectIsValid)
 	{
-		float s = nitstoCCCS((randf()) * starNits );
-		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(s, s, s), &starBrush) );
-
-		float2 center = float2(logSize.right * randf(), logSize.bottom * randf() );
-		float fRad = randf() * randf() * randf() * 19.f + 1.f;
-		ellipse =
-		{
-			D2D1::Point2F(center.x, center.y),
-			fRad, fRad
-		};
-		ctx->FillEllipse(&ellipse, starBrush.Get());
-
-		pixels += M_PI_F * fRad * fRad * s;
-
+		title << L"\nERROR: " << rsc.effectShaderFilename << L" is missing\n";
 	}
-	float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
-	float APL = pixels / area;
+	else
+	{
+		float noiseNits = min(nits, 100.f);						// clamp nits to max of 100
+		auto out = m_deviceResources->GetOutputSize();
+		D2D1_POINT_2F time = { m_totalTime, 0.f };
 
+		// init var.
+		float init = 30.0f;
+
+		// How many pixels before the wavelength halves.
+		float dist = (out.right - out.left) / 4.0f;
+
+		rsc.d2dEffect->SetValueByName(L"Center", time);
+		rsc.d2dEffect->SetValueByName(L"InitialWavelength", init);
+		rsc.d2dEffect->SetValueByName(L"WavelengthHalvingDistance", dist);
+		rsc.d2dEffect->SetValueByName(L"WhiteLevelMultiplier", nitstoCCCS(noiseNits));
+
+		ctx->DrawImage(rsc.d2dEffect.Get());
+	}
+
+	// draw center square
 	ComPtr<ID2D1SolidColorBrush> centerBrush;
 	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &centerBrush));
 
@@ -4094,8 +4144,7 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 
 	if (m_showExplanatoryText)
 	{
-		float dpi = m_deviceResources->GetDpi();
-
+		// draw target circle
 //		float fRad = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top)*0.04f)*0.35;	// 4% screen area colorimeter box
 		float fRad = 0.5f * m_snoodDiam / 25.4f * dpi * 1.2f;      // radius of dia 27mm -> inches -> dips
 		float2 center = float2(logSize.right * 0.5f, logSize.bottom * 0.5f);
@@ -4105,12 +4154,9 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 			D2D1::Point2F(center.x, center.y),
 			fRad, fRad
 		};
-
 		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 1 );
 
-		std::wstringstream title;
 		title << fixed << setw(8) << setprecision(0);
-
 		title << L"9. Validating 2084 Profile Curve in nits\n";
 		title << L"Subtest#: ";
 		title << m_currentProfileTile;
@@ -4392,9 +4438,45 @@ void Game::GenerateTestPattern_BlackLevelCrush(ID2D1DeviceContext2* ctx)		      
 
 void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	        		// v1.2.4
 {
+	// Draw the center patch:
+	float nits = 10.0f;		// per specification
+	float c;
+	c = nitstoCCCS(nits) / BRIGHTNESS_SLIDER_FACTOR;
+
+	float avg = nits;
+	if (m_newTestSelected)
+		SetMetadata(m_outputDesc.MaxLuminance, avg, GAMUT_Native);
+
 	// get bounds of entire window
 	auto logSize = m_deviceResources->GetLogicalSize();
+	std::wstringstream title;
 
+#if 1
+	// Draw the background noise effect
+	auto rsc = m_testPatternResources[TestPattern::TenPercentPeak];
+	if (!rsc.effectIsValid)
+	{
+		title << L"\nERROR: " << rsc.effectShaderFilename << L" is missing\n";
+	}
+	else
+	{
+		auto out = m_deviceResources->GetOutputSize();
+		D2D1_POINT_2F time = { m_totalTime, 0.f };
+
+		// init var.
+		float init = 30.0f;
+
+		// How many pixels before the wavelength halves.
+		float dist = (out.right - out.left) / 4.0f;
+
+		rsc.d2dEffect->SetValueByName(L"Center", time );
+		rsc.d2dEffect->SetValueByName(L"InitialWavelength", init);
+		rsc.d2dEffect->SetValueByName(L"WavelengthHalvingDistance", dist);
+		rsc.d2dEffect->SetValueByName(L"WhiteLevelMultiplier", c );
+
+		ctx->DrawImage(rsc.d2dEffect.Get());
+	}
+#else
 	// draw a starfield background
 	ComPtr<ID2D1SolidColorBrush> starBrush;
 	D2D1_ELLIPSE ellipse;
@@ -4418,16 +4500,10 @@ void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	      
 	}
 	float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
 	float APL = pixels / area;
-
-	float nits = 10.0f;		// per specification
-	float c;
-	c = nitstoCCCS(nits) / BRIGHTNESS_SLIDER_FACTOR;
-
-	float avg = nits * 1.1f;
-	if (m_newTestSelected)
-		SetMetadata(m_outputDesc.MaxLuminance, avg, GAMUT_Native);
+#endif
 
 	// the center patch
+	// same brightness as everything else
 	ComPtr<ID2D1SolidColorBrush> centerBrush;
 	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &centerBrush));
 
@@ -4458,14 +4534,15 @@ void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	      
 	};
 	ctx->FillRectangle(&centerRect, centerBrush.Get());
 
-	if (m_subTitleVisible & 0x01)
+	// draw the Subtitle text
+	if (m_subTitleVisible & 0x01)			// only switch visibility on last bit
 	{
 		// set the sub title color
 		float textNits = 200.0f;			// bright white
-		float c = nitstoCCCS(textNits) / BRIGHTNESS_SLIDER_FACTOR;
+		float cs = nitstoCCCS(textNits) / BRIGHTNESS_SLIDER_FACTOR;
 
 		ComPtr<ID2D1SolidColorBrush> subTitleBrush;
-		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &subTitleBrush));
+		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(cs, cs, cs), &subTitleBrush));
 
 		std::wstring subTitle = L"This is a subtitle text string for testing";
 		float ctrx = (logSize.right + logSize.left) * 0.5f;
@@ -4505,14 +4582,14 @@ void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	      
 
 	if (m_showExplanatoryText)
 	{
-		std::wstringstream title;
-		title << L"   Subtitle Flicker Test: ";
+		title << L"1.2.4 Subtitle Flicker Test: ";
 		title << fixed << setw(8) << setprecision(2);
 		title << L"\nNits: ";
 		title << nits;
 		title << L"  HDR10: ";
 		title << setprecision(0);
 		title << Apply2084(c * 80.f / 10000.f) * 1023.f;
+		title << L"\n Up/Dn arrows toggle subtitles";
 		title << L"\n" << m_hideTextString;
 
 		RenderText(ctx, m_largeFormat.Get(), title.str(), m_testTitleRect);
@@ -4564,7 +4641,36 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 	float nits = Remove2084( 1023.f / 1023.0f) * 10000.0f;		// go to linear space
 //	float c = nitstoCCCS(nits / BRIGHTNESS_SLIDER_FACTOR);		// scale by 80 and slider
 
+	std::wstringstream title;
 	auto logSize = m_deviceResources->GetLogicalSize();
+
+#if 1
+// Draw the background noise effect
+	auto rsc = m_testPatternResources[TestPattern::TenPercentPeak];
+	if (!rsc.effectIsValid)
+	{
+		title << L"\nERROR: " << rsc.effectShaderFilename << L" is missing\n";
+	}
+	else
+	{
+		auto out = m_deviceResources->GetOutputSize();
+		D2D1_POINT_2F time = { m_totalTime, 0.f };
+
+		// init var.
+		float init = 30.0f;
+
+		// How many pixels before the wavelength halves.
+		float dist = (out.right - out.left) / 4.0f;
+
+		rsc.d2dEffect->SetValueByName(L"Center", time );
+		rsc.d2dEffect->SetValueByName(L"InitialWavelength", init);
+		rsc.d2dEffect->SetValueByName(L"WavelengthHalvingDistance", dist);
+		rsc.d2dEffect->SetValueByName(L"WhiteLevelMultiplier", nitstoCCCS(185));
+
+		ctx->DrawImage(rsc.d2dEffect.Get());
+	}
+#else
+	// draw the random dots
 	float pixels = 0;
 	D2D1_ELLIPSE ellipse;
 	ComPtr<ID2D1SolidColorBrush> starBrush;
@@ -4587,7 +4693,7 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 
 	}
 	float APL = pixels / area;
-
+#endif
 
 	// create D2D brush of this color
 	ComPtr<ID2D1SolidColorBrush> centerBrush;
@@ -4633,7 +4739,6 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 
 		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2 );
 
-		std::wstringstream title;
 		title << fixed << setprecision(0);
 
 		title << L"   X-Rite™ Colors\n";
@@ -5422,9 +5527,9 @@ void Game::CreateDeviceIndependentResources()
         L"en-US",
         &m_largeFormat));
 
-
-    DX::ThrowIfFailed(SineSweepEffect::Register(m_deviceResources->GetD2DFactory()));
+	DX::ThrowIfFailed(BackgroundNoiseEffect::Register(m_deviceResources->GetD2DFactory()));
     DX::ThrowIfFailed(BandedGradientEffect::Register(m_deviceResources->GetD2DFactory()));
+	DX::ThrowIfFailed(SineSweepEffect::Register(m_deviceResources->GetD2DFactory()));
 	DX::ThrowIfFailed(ToneSpikeEffect::Register(m_deviceResources->GetD2DFactory()));
 }
 
@@ -5618,7 +5723,7 @@ void Game::SetTestPattern(TestPattern testPattern)
     {
 
         if (TestPattern::Cooldown >= testPattern)
-            {
+        {
             m_currentTest = testPattern;
         }
     }
@@ -5633,6 +5738,7 @@ void Game::ChangeTestPattern(bool increment)
     if (TestPattern::Cooldown == m_currentTest)
     {
         m_currentTest = m_cachedTest;
+		m_newTestSelected = true;
         return;
     }
 
