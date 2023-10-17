@@ -9,11 +9,8 @@
 // 
 //*********************************************************
 
-DEFINE_GUID(GUID_BackgroundNoisePixelShader,   0x882aea52, 0x4067, 0x11ee, 0xbe, 0x56, 0x02, 0x42, 0xac, 0x12, 0x00, 0x02);
-DEFINE_GUID(CLSID_CustomBackgroundNoiseEffect, 0x882af0d8, 0x4067, 0x11ee, 0xbe, 0x56, 0x02, 0x42, 0xac, 0x12, 0x00, 0x02);
-
-// 882aea52 - 4067 - 11ee - be56 - 0242ac120002
-// 882af0d8 - 4067 - 11ee - be56 - 0242ac120002
+DEFINE_GUID(GUID_BackgroundNoisePixelShader,   0x882aea52, 0x4067, 0x11ee, 0xbe, 0x56, 0x02, 0x42, 0xac, 0x12, 0x00, 0x02);  // 882aea52 - 4067 - 11ee - be56 - 0242ac120002
+DEFINE_GUID(CLSID_CustomBackgroundNoiseEffect, 0x882af0d8, 0x4067, 0x11ee, 0xbe, 0x56, 0x02, 0x42, 0xac, 0x12, 0x00, 0x02);  // 882af0d8 - 4067 - 11ee - be56 - 0242ac120002
 
 // Our effect contains one transform, which is simply a wrapper around a pixel shader. As such,
 // we can simply make the effect itself act as the transform.
@@ -68,17 +65,14 @@ public:
     IFACEMETHODIMP QueryInterface(_In_ REFIID riid, _Outptr_ void** ppOutput);
 
     // Declare property getter/setter methods.
-    HRESULT SetCenter(D2D1_POINT_2F center);
-    D2D1_POINT_2F GetCenter() const;
+    HRESULT SetAPL(float apl );
+    float GetAPL() const;
 
-    HRESULT SetWavelengthHalvingDistance(float frequency);
-    float GetWavelengthHalvingDistance() const;
+    HRESULT SetClamp(float lim );
+    float GetClamp() const;
 
-    HRESULT SetInitialWavelength(float phase);
-    float GetInitialWavelength() const;
-
-    HRESULT SetWhiteLevelMultiplier(float multiplier);
-    float GetWhiteLevelMultiplier() const;
+    HRESULT SetiTime(float t );
+    float GetiTime() const;
 
 private:
     BackgroundNoiseEffect();
@@ -111,11 +105,10 @@ private:
     // All distances are in pixels, we ignore DPI.
     struct
     {
-        float dpi;
-        D2D1_POINT_2F center;
-        float initialWavelength;
-        float wavelengthHalvingDistance;
-        float whiteLevelMultiplier;
+        float dpi;               // screen property
+        float APL;               // Average Picture Level in Nits
+        float Clamp;             // No pixel values above this limit (nits)
+        float iTime;             // time since app start in seconds
     } m_constants;
 
     Microsoft::WRL::ComPtr<ID2D1DrawInfo>      m_drawInfo;

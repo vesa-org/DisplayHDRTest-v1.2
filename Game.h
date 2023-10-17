@@ -172,9 +172,11 @@ public:
     void ChangeGradientColor(float deltaR, float deltaG, float deltaB);
     void ChangeBackBufferFormat(DXGI_FORMAT fmt);
     void ChangeCheckerboard(bool increment);
+    bool ToggleSubtitle();
     bool ToggleInfoTextVisible();
     void SetMetadataNeutral(); // OS defaults
-	void PrintMetadata( ID2D1DeviceContext2* ctx, bool blackText = false );
+	void PrintMetadata(   ID2D1DeviceContext2* ctx, bool blackText = false );
+    void PrintTestingTier(ID2D1DeviceContext2* ctx, bool blackText = false);
 
 private:
 
@@ -287,8 +289,9 @@ private:
     Microsoft::WRL::ComPtr<IDWriteTextFormat>               m_monospaceFormat;
     D2D1_RECT_F                                             m_testTitleRect;    // Where to draw each test's title
     D2D1_RECT_F                                             m_largeTextRect;    // Where to draw large text for the test, if applicable
-	D2D1_RECT_F												m_MetadataTextRect;
-    TestingTier                                             m_testingTier;
+	D2D1_RECT_F												m_MetadataTextRect; // where we display the metadata (lower right
+    D2D1_RECT_F                                             m_TestingTierTextRect;  // place to dislay the current tier (upper right)
+    TestingTier                                             m_testingTier;      // what tier we are testing for
     TestPattern                                             m_currentTest;
     TestPattern                                             m_cachedTest;
     bool                                                    m_shiftKey;         // whether shift key is pressed
@@ -305,7 +308,7 @@ private:
     Checkerboard                                            m_checkerboard;     // for tests        5.x
     D2D1_COLOR_F                                            m_gradientColor;
     INT32                                                   m_LocalDimmingBars;                 // v1.2 Local Dimming Contrast Test
-    INT32                                                   m_subTitleVisible;                  // v1.4 subTitle Flicker Test
+    INT32                                                   m_subtitleVisible;                  // v1.4 Subtitle Flicker Test
     INT32                                                   m_currentXRiteIndex;                // v1.5 XRite Color Patch
     bool                                                    m_XRitePatchAutoMode;               // v1.5 flag for when it auto animates
     float                                                   m_XRitePatchDisplayTime;            // how long to show XRite color patch in auto mode

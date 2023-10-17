@@ -1,3 +1,16 @@
+//********************************************************* 
+// 
+// Copyright (c) Microsoft. All rights reserved. 
+// This code is licensed under the MIT License (MIT). 
+// THIS CODE IS PROVIDED *AS IS* WITHOUT WARRANTY OF 
+// ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING ANY 
+// IMPLIED WARRANTIES OF FITNESS FOR A PARTICULAR 
+// PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT. 
+// 
+//*********************************************************
+// 
+#define M_E 2.718281828459045235360f
+// 
 // Custom effects using pixel shaders should use HLSL helper functions defined in
 // d2d1effecthelpers.hlsli to make use of effect shader linking.
 #define D2D_INPUT_COUNT 0           // The pixel shader is a source and does not take inputs.
@@ -9,14 +22,12 @@
 cbuffer constants : register(b0)
 {
     float dpi : packoffset(c0.x);
-    float2 center : packoffset(c0.y);
-    float initialWavelength : packoffset(c0.w);
-    float wavelengthHalvingDistance : packoffset (c1.x);
-    float whiteLevelMultiplier : packoffset (c1.y);			// actual nits to tone map to
+    float APL : packoffset(c0.y);           // APL -Average Picture Level
+    float Clamp : packoffset(c0.z);         // No pixel values above this limit (nits)
+    float iTime : packoffset (c0.w);        // time since app start in seconds
 };
 
-#define iTime (center.x)    // TODO: replace hack with real declaration of time as an input constant to shader.
-
+/*
 float pi = 3.14159265;
 float pisquared = 9.8696;
 
@@ -42,7 +53,7 @@ float bhaskara( float n)
     }   
 }
 
-#if 0
+
 float hash( float2 p )
 {
 //  return frac(bhaskara(p.x + p.y * 57.1235)*54671.57391);
@@ -55,7 +66,6 @@ float hash( float2 p)       // hash12 floating point
     p3 += dot(p3, p3.yzx + 33.33);
     return frac((p3.x + p3.y) * p3.z);
 }
-#endif
 
 float hash( int2 p )            // integers require shader model 5.0 or higher
 {
@@ -69,34 +79,57 @@ float hash( int2 p )            // integers require shader model 5.0 or higher
     return              float(n & 0x0fffffff) / float(0x0fffffff);
 }
 
-float noise( float2 p )
+ float noise(float2 p)
 {
     float2 i = floor(p);
     float2 f = frac(p);
-    f = f*f*(3.0-2.0*f);             // cubic interpolant aka smoothstep()
+    f = f * f * (3.0 - 2.0 * f);             // cubic interpolant aka smoothstep()
 
-    return lerp(lerp( hash( i + float2( 0.0, 0.0 ) ), hash( i + float2( 1.0, 0.0 ) ), f.x ),
-                lerp( hash( i + float2( 0.0, 1.0 ) ), hash( i + float2( 1.0, 1.0 ) ), f.x ), f.y);
+    return lerp(lerp(hash(i + float2(0.0, 0.0)), hash(i + float2(1.0, 0.0)), f.x),
+        lerp(hash(i + float2(0.0, 1.0)), hash(i + float2(1.0, 1.0)), f.x), f.y);
 }
+*/
+
+// https://www.pcg-random.org/
+uint pcg(uint v)
+{
+    uint state = v * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+// https://www.shadertoy.com/view/XlGcRh
+// Uniform value in range [0..1)
+float hash( int2 u )
+{
+    return float(pcg(pcg(u.x) + u.y)) / float(0xFFFFFFFFU);     // normalize to 1.0
+}
+
+/*
+a = 1;  G = (a - 1)! = 1;           // exponential distribution
+a = 2;  G = (a - 1)! = 1;           // gamma distribution
+*/
 
 D2D_PS_ENTRY(main)
 {
-    float n = 0.0;
-    float wave = 3.0;
-    float inv = 1.0/1440.f;
+    float x;
+    float c = 10000;                                    // output color init to out of range
+    float2 pos = D2DGetScenePosition().xy;      	    // units of pixels
 
-    float2 pos = D2DGetScenePosition().xy;				// units of pixels
+    pos.x -= iTime * 60.0;                              // animate
+    pos.y += iTime * 60.0;
 
-    for (int i=0; i<8; i++)
+    //  pos /= 4;                                       // derez into tiles
+
+    int i = 0;
+    while (c > Clamp)                                   // check vs Clamp
     {
-        n += noise(floor(pos.xy*wave + iTime*3840.0.x)*inv);
-        wave *= 3.0;
+        x = hash(pos + x * i);                          // uniform from [0 to 1.)
+        c = -log(1.0 - x) * APL;
+        i++;
     }
-    
-    n *= 0.125f;  // divide by number of layers
-    n -= 0.1;
-    n *= n;     // make symmetrical in gamma-corrected space
-    n *= whiteLevelMultiplier;
 
-    return float4( float3(n,n,n), 1.f );
+    c = c/80.f;                                         // scale from nits to CCCS brightness units
+//  c = pow(c, 2.2);                                    // required in SDR mode
+    return float4( c, c, c, 1.0 );
 }

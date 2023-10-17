@@ -288,7 +288,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 // Handle keyboard inputs;
 // https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
-    case WM_KEYDOWN:
+    case WM_KEYDOWN:                            // these do auto repeat
         switch (wParam)
         {
         case VK_SHIFT:
@@ -304,7 +304,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         }
         break;
 
-    case WM_KEYUP:
+    case WM_KEYUP:                              // these don't auto repeat as there is only one up event.
         switch (wParam)
         {
         case VK_SHIFT:
@@ -317,6 +317,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
         case VK_HOME:
             game->StartTestPattern();
+            break;
+
+        case VK_CONTROL:
+            game->ToggleSubtitle();
             break;
 
         case VK_RIGHT:
@@ -336,6 +340,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             break;
         case 0x43:                                                        // 'c'
             game->SetTestPattern(Game::TestPattern::Cooldown);
+            break;
+
+        case 0x30:                                                        // '0'
+            game->SetTestPattern(Game::TestPattern::ConnectionProperties);
             break;
         case 0x31:                                                        // '1'
             game->SetTestPattern(Game::TestPattern::TenPercentPeak);
@@ -363,9 +371,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             break;
 		case 0x39:                                                        // '9'
 			game->SetTestPattern(Game::TestPattern::ProfileCurve);
-			break;
-		case 0x30:                                                        // '0'
-//			game->SetTestPattern(Game::TestPattern::ProfileCurve);
 			break;
 
         case 0x41: // 'a'

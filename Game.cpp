@@ -208,7 +208,7 @@ void Game::ConstructorInternal()
 	m_checkerboard = Checkerboard::Cb6x4;
 	m_snoodDiam = 40.f;							// OD of sensor snood in mm
 	m_LocalDimmingBars = 1;						// v1.2 Local Dimming Contrast test
-	m_subTitleVisible = 1;						// v1.4 subTitle Flicker Test
+	m_subtitleVisible = 1;						// v1.4 subTitle Flicker Test
 	m_currentXRiteIndex = 0;					// v1.5 current index into array of Xrite patch colors
 	m_XRitePatchAutoMode = FALSE;				// v1.5 flag for when it auto animates
 	m_XRitePatchDisplayTime = 1.f;				// v1.5 duration to show color patch in auto mode
@@ -833,6 +833,17 @@ void Game::PrintMetadata( ID2D1DeviceContext2* ctx, bool blackText /* = false */
 	RenderText(ctx, m_largeFormat.Get(), text.str(), m_MetadataTextRect, blackText);
 }
 
+// dump out the metadata to a string for display
+void Game::PrintTestingTier(ID2D1DeviceContext2* ctx, bool blackText /* = false */)
+{
+	std::wstringstream text;
+	// print luminance levels
+
+	text << GetTierName(m_testingTier);
+
+	RenderText(ctx, m_largeFormat.Get(), text.str(), m_TestingTierTextRect, blackText);
+}
+
 void Game::GenerateTestPattern_StartOfTest(ID2D1DeviceContext2* ctx)
 {
     auto fmt = m_deviceResources->GetBackBufferFormat();
@@ -841,7 +852,7 @@ void Game::GenerateTestPattern_StartOfTest(ID2D1DeviceContext2* ctx)
     if (m_newTestSelected) SetMetadataNeutral();
 
     text << m_appTitle;
-    text << L"\n\nVersion 1.2 Beta 10\n\n";
+    text << L"\n\nVersion 1.2 Beta 11\n\n";
     //text << L"ALT-ENTER: Toggle fullscreen: all measurements should be made in fullscreen\n";
 	text << L"->, PAGE DN:       Move to next test\n";
 	text << L"<-, PAGE UP:        Move to previous test\n";
@@ -1842,7 +1853,6 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2* ctx) //******
 		SetMetadata(nits, avg, GAMUT_Native);
 	}
 
-#if 1
 	// Draw the background noise effect
 	auto rsc = m_testPatternResources[TestPattern::TenPercentPeak];
 	if (!rsc.effectIsValid)
@@ -1851,48 +1861,17 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2* ctx) //******
 	}
 	else
 	{
-		auto out = m_deviceResources->GetOutputSize();
-		D2D1_POINT_2F time = { m_totalTime, 0.f };
-
-		// init var.
-		float init = 30.0f;
-
-		// How many pixels before the wavelength halves.
-		float dist = (out.right - out.left) / 4.0f;
-
-		rsc.d2dEffect->SetValueByName(L"Center", time);
-		rsc.d2dEffect->SetValueByName(L"InitialWavelength", init);
-		rsc.d2dEffect->SetValueByName(L"WavelengthHalvingDistance", dist);
-		rsc.d2dEffect->SetValueByName(L"WhiteLevelMultiplier", nitstoCCCS(185));
+		float TierMaxLum = GetTierLuminance(m_testingTier);
+		float APL = TierMaxLum * 0.022222222f;												// convert to nits based on current tier
+		float limit = 400.0f;
+		// ******* Arguments to this call are not type checked  *********
+		// ******* DO NOT PASS A DOUBLE HERE (EVEN LITERAL!) *** ELSE FAIL ************* 
+		rsc.d2dEffect->SetValueByName(L"APL", APL );		// ****** MUST BE FLOAT!		// in nits
+		rsc.d2dEffect->SetValueByName(L"Clamp", limit );									// nits
+		rsc.d2dEffect->SetValueByName(L"iTime", m_totalTime );								// seconds
 
 		ctx->DrawImage(rsc.d2dEffect.Get());
 	}
-#else
-	// draw a starfield background
-	ComPtr<ID2D1SolidColorBrush> starBrush;
-	D2D1_ELLIPSE ellipse;
-	float pixels = 0;
-	srand(314158);											// seed the starfield rng
-	for ( int i = 1; i < 2000; i++)
-	{
-		float s = nitstoCCCS( (randf())*185.0f + 1.f );
-		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(s, s, s), &starBrush));
-
-		float2 center = float2(logSize.right * randf(), logSize.bottom * randf() );
-		float fRad = randf() * randf() * randf() * 12.f + 1.f;
-		ellipse =
-		{
-			D2D1::Point2F(center.x, center.y),
-			fRad, fRad
-		};
-		ctx->FillEllipse(&ellipse, starBrush.Get() );
-
-		pixels += M_PI_F * fRad * fRad * s;
-
-	}
-	float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
-	float APL = pixels / area;
-#endif
 
 	// draw the center rectangle
 	float c;
@@ -1950,12 +1929,14 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2* ctx) //******
         title << L"  HDR10: ";
 		title << setprecision(0);
         title << Apply2084( c*80.f * BRIGHTNESS_SLIDER_FACTOR / 10000.f) * 1023.f;
+		title << L"\n - Change Tier using Up/Down arrow keys";
         title << L"\n" << m_hideTextString;
 
         RenderText(ctx, m_largeFormat.Get(), title.str(), m_testTitleRect);
 
 		PrintMetadata(ctx);
-    }
+		PrintTestingTier(ctx);
+	}
     m_newTestSelected = false;
 
 }
@@ -1986,19 +1967,14 @@ void Game::GenerateTestPattern_TenPercentPeakMAX(ID2D1DeviceContext2 * ctx) //**
 	}
 	else
 	{
-		auto out = m_deviceResources->GetOutputSize();
-		D2D1_POINT_2F time = { m_totalTime, 0.f };
-
-		// init var.
-		float init = 30.0f;
-
-		// How many pixels before the wavelength halves.
-		float dist = (out.right - out.left) / 4.0f;
-
-		rsc.d2dEffect->SetValueByName(L"Center", time );
-		rsc.d2dEffect->SetValueByName(L"InitialWavelength", init);
-		rsc.d2dEffect->SetValueByName(L"WavelengthHalvingDistance", dist);
-		rsc.d2dEffect->SetValueByName(L"WhiteLevelMultiplier", nitstoCCCS(185));
+		float TierMaxLum = GetTierLuminance(m_testingTier);
+		float APL = TierMaxLum * 0.022222222f;												// convert to nits based on current tier
+		float limit = 400.0f;
+		// ******* Arguments to this call are not type checked  *********
+		// ******* DO NOT PASS A DOUBLE HERE (EVEN LITERAL!) *** ELSE FAIL ************* 
+		rsc.d2dEffect->SetValueByName(L"APL", APL);		// ****** MUST BE FLOAT!			// average luminance in nits
+		rsc.d2dEffect->SetValueByName(L"Clamp", limit );									// nits
+		rsc.d2dEffect->SetValueByName(L"iTime", m_totalTime);								// seconds
 
 		ctx->DrawImage(rsc.d2dEffect.Get());
 	}
@@ -2058,11 +2034,13 @@ void Game::GenerateTestPattern_TenPercentPeakMAX(ID2D1DeviceContext2 * ctx) //**
         title << L"  HDR10: ";
 		title << setprecision(0);
         title << Apply2084(c*80.f / 10000.f) * 1023.f;
+		title << L"\n - Change Tier using Up/Down arrow keys";
         title << L"\n" << m_hideTextString;
 
         RenderText(ctx, m_largeFormat.Get(), title.str(), m_testTitleRect);
 
 		PrintMetadata(ctx);
+		PrintTestingTier(ctx);
 	}
     m_newTestSelected = false;
 
@@ -4069,19 +4047,13 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 	float nits = Remove2084( PQCode / 1023.0f)*10000.0f;		// go to linear space
 	float c = nitstoCCCS(nits/BRIGHTNESS_SLIDER_FACTOR);		// scale by 80 and slider
 
-	ComPtr<ID2D1SolidColorBrush> peakBrush;
-	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &peakBrush));
-
-	float dpi = m_deviceResources->GetDpi();
-	auto logSize = m_deviceResources->GetLogicalSize();
-	std::wstringstream title;
-
-
 	// "tone map" PQ limit of 10k nits down to panel maxLuminance in CCCS
 	float avg = nits * 0.1f;								// 10% screen area
 	if (m_newTestSelected) {
 		SetMetadata(nits, avg, GAMUT_Native);
 	}
+
+	std::wstringstream title;
 
 	// Draw the background noise effect
 	auto rsc = m_testPatternResources[TestPattern::TenPercentPeak];
@@ -4091,25 +4063,21 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 	}
 	else
 	{
-		float noiseNits = min(nits, 100.f);						// clamp nits to max of 100
-		auto out = m_deviceResources->GetOutputSize();
-		D2D1_POINT_2F time = { m_totalTime, 0.f };
-
-		// init var.
-		float init = 30.0f;
-
-		// How many pixels before the wavelength halves.
-		float dist = (out.right - out.left) / 4.0f;
-
-		rsc.d2dEffect->SetValueByName(L"Center", time);
-		rsc.d2dEffect->SetValueByName(L"InitialWavelength", init);
-		rsc.d2dEffect->SetValueByName(L"WavelengthHalvingDistance", dist);
-		rsc.d2dEffect->SetValueByName(L"WhiteLevelMultiplier", nitstoCCCS(noiseNits));
+		float noiseNits = min(nits, 100.0f)*0.5;					// clamp background APL to max of 50
+		float limit = 100.0f;										// clamp all pixel values to this
+		// ******* Arguments to this call are not type checked  *********
+		// ******* DO NOT PASS A DOUBLE HERE (EVEN LITERAL!) *** ELSE FAIL ************* 
+		rsc.d2dEffect->SetValueByName(L"APL", noiseNits );	// ****** MUST BE FLOAT!		// average luminance across image
+		rsc.d2dEffect->SetValueByName(L"Clamp", limit );									// no pixels above this (nits)
+		rsc.d2dEffect->SetValueByName(L"iTime", m_totalTime);								// seconds
 
 		ctx->DrawImage(rsc.d2dEffect.Get());
 	}
 
 	// draw center square
+	float dpi = m_deviceResources->GetDpi();
+	auto logSize = m_deviceResources->GetLogicalSize();
+
 	ComPtr<ID2D1SolidColorBrush> centerBrush;
 	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &centerBrush));
 
@@ -4166,6 +4134,7 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 		title << setprecision(4) << nits;
 //		title << L"   HDR10b: ";
 //		title << setprecision(4) << PQcheck;		// echo input to validate precision
+		title << L"\nUp/Down arrow keys select level";
 		title << L"\n";
 		title << m_hideTextString;
 
@@ -4451,7 +4420,6 @@ void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	      
 	auto logSize = m_deviceResources->GetLogicalSize();
 	std::wstringstream title;
 
-#if 1
 	// Draw the background noise effect
 	auto rsc = m_testPatternResources[TestPattern::TenPercentPeak];
 	if (!rsc.effectIsValid)
@@ -4460,47 +4428,16 @@ void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	      
 	}
 	else
 	{
-		auto out = m_deviceResources->GetOutputSize();
-		D2D1_POINT_2F time = { m_totalTime, 0.f };
-
-		// init var.
-		float init = 30.0f;
-
-		// How many pixels before the wavelength halves.
-		float dist = (out.right - out.left) / 4.0f;
-
-		rsc.d2dEffect->SetValueByName(L"Center", time );
-		rsc.d2dEffect->SetValueByName(L"InitialWavelength", init);
-		rsc.d2dEffect->SetValueByName(L"WavelengthHalvingDistance", dist);
-		rsc.d2dEffect->SetValueByName(L"WhiteLevelMultiplier", c );
+		float APL = 5.0f;
+		float limit = 10.0f;
+		// ******* Arguments to this call are not type checked  *********
+		// ******* DO NOT PASS A DOUBLE HERE (EVEN LITERAL!) *** ELSE FAIL ************* 
+		rsc.d2dEffect->SetValueByName(L"APL", APL );		// ****** MUST BE FLOAT!		// negative means this is a clamp
+		rsc.d2dEffect->SetValueByName(L"Clamp", limit );									// nits
+		rsc.d2dEffect->SetValueByName(L"iTime", m_totalTime);								// seconds
 
 		ctx->DrawImage(rsc.d2dEffect.Get());
 	}
-#else
-	// draw a starfield background
-	ComPtr<ID2D1SolidColorBrush> starBrush;
-	D2D1_ELLIPSE ellipse;
-	float pixels = 0;
-	for (int i = 1; i < 2000; i++)
-	{
-		float s = nitstoCCCS((randf()) * 9.f + 1.f);
-		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(s, s, s), &starBrush));
-
-		float2 center = float2(logSize.right * randf(), logSize.bottom * randf());
-		float fRad = randf() * randf() * randf() * 19.f + 1.f;
-		ellipse =
-		{
-			D2D1::Point2F(center.x, center.y),
-			fRad, fRad
-		};
-		ctx->FillEllipse(&ellipse, starBrush.Get());
-
-		pixels += M_PI_F * fRad * fRad * s;
-
-	}
-	float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
-	float APL = pixels / area;
-#endif
 
 	// the center patch
 	// same brightness as everything else
@@ -4535,25 +4472,25 @@ void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	      
 	ctx->FillRectangle(&centerRect, centerBrush.Get());
 
 	// draw the Subtitle text
-	if (m_subTitleVisible & 0x01)			// only switch visibility on last bit
+	if (m_subtitleVisible & 0x01)			// only switch visibility on last bit
 	{
 		// set the sub title color
 		float textNits = 200.0f;			// bright white
 		float cs = nitstoCCCS(textNits) / BRIGHTNESS_SLIDER_FACTOR;
 
-		ComPtr<ID2D1SolidColorBrush> subTitleBrush;
-		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(cs, cs, cs), &subTitleBrush));
+		ComPtr<ID2D1SolidColorBrush> subtitleBrush;
+		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(cs, cs, cs), &subtitleBrush));
 
-		std::wstring subTitle = L"This is a subtitle text string for testing";
+		std::wstring subtitle = L"This is a subtitle text string for testing";
 		float ctrx = (logSize.right + logSize.left) * 0.5f;
-		D2D1_RECT_F subTitleRect =
+		D2D1_RECT_F subtitleRect =
 		{
 			ctrx - 500.0f, logSize.bottom - 150.f,
 			ctrx + 600.0f, logSize.bottom
 		};
 
 		// create the text format
-		Microsoft::WRL::ComPtr<IDWriteTextFormat> subTitleFormat;
+		Microsoft::WRL::ComPtr<IDWriteTextFormat> subtitleFormat;
 		auto dwFactory = m_deviceResources->GetDWriteFactory();
 		DX::ThrowIfFailed(dwFactory->CreateTextFormat(
 			L"Segoe UI",
@@ -4563,21 +4500,21 @@ void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	      
 			DWRITE_FONT_STRETCH_NORMAL,
 			64.0f,
 			L"en-US",
-			&subTitleFormat));
+			&subtitleFormat));
 		
 		// define a text layout
 		ComPtr<IDWriteTextLayout> layout;
 		DX::ThrowIfFailed(dwFactory->CreateTextLayout(
-			subTitle.c_str(),
-			(unsigned int)subTitle.length(),
-			subTitleFormat.Get(),
-			subTitleRect.right,
-			subTitleRect.bottom,
+			subtitle.c_str(),
+			(unsigned int)subtitle.length(),
+			subtitleFormat.Get(),
+			subtitleRect.right,
+			subtitleRect.bottom,
 			&layout));
 
 		// draw the subtitle with a black dropshadow underneath
-		ctx->DrawTextLayout(D2D1::Point2F(subTitleRect.left + 1, subTitleRect.top + 1.f), layout.Get(), m_blackBrush.Get());
-		ctx->DrawTextLayout(D2D1::Point2F(subTitleRect.left    , subTitleRect.top)      , layout.Get(), subTitleBrush.Get());
+		ctx->DrawTextLayout(D2D1::Point2F(subtitleRect.left + 1, subtitleRect.top + 1.f), layout.Get(), m_blackBrush.Get());
+		ctx->DrawTextLayout(D2D1::Point2F(subtitleRect.left    , subtitleRect.top)      , layout.Get(), subtitleBrush.Get());
 	}
 
 	if (m_showExplanatoryText)
@@ -4589,7 +4526,7 @@ void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	      
 		title << L"  HDR10: ";
 		title << setprecision(0);
 		title << Apply2084(c * 80.f / 10000.f) * 1023.f;
-		title << L"\n Up/Dn arrows toggle subtitles";
+		title << L"\n<Ctrl> key toggles subtitles";
 		title << L"\n" << m_hideTextString;
 
 		RenderText(ctx, m_largeFormat.Get(), title.str(), m_testTitleRect);
@@ -4644,7 +4581,6 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 	std::wstringstream title;
 	auto logSize = m_deviceResources->GetLogicalSize();
 
-#if 1
 // Draw the background noise effect
 	auto rsc = m_testPatternResources[TestPattern::TenPercentPeak];
 	if (!rsc.effectIsValid)
@@ -4653,47 +4589,18 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 	}
 	else
 	{
-		auto out = m_deviceResources->GetOutputSize();
-		D2D1_POINT_2F time = { m_totalTime, 0.f };
-
-		// init var.
-		float init = 30.0f;
-
-		// How many pixels before the wavelength halves.
-		float dist = (out.right - out.left) / 4.0f;
-
-		rsc.d2dEffect->SetValueByName(L"Center", time );
-		rsc.d2dEffect->SetValueByName(L"InitialWavelength", init);
-		rsc.d2dEffect->SetValueByName(L"WavelengthHalvingDistance", dist);
-		rsc.d2dEffect->SetValueByName(L"WhiteLevelMultiplier", nitstoCCCS(185));
+		float TierMaxLum = GetTierLuminance(m_testingTier);
+		float apl = TierMaxLum * 0.02222222f;
+		float limit = 400.0f;
+		// ******* Arguments to these calls are not type checked  *********
+		// ******* DO NOT PASS A DOUBLE HERE (EVEN LITERAL!) *** ELSE FAIL ************* 
+		rsc.d2dEffect->SetValueByName(L"APL", apl );		// ****** MUST BE FLOAT!		// fraction of screen
+		rsc.d2dEffect->SetValueByName(L"Clamp", limit );									// nits
+		rsc.d2dEffect->SetValueByName(L"iTime", m_totalTime);								// seconds
 
 		ctx->DrawImage(rsc.d2dEffect.Get());
 	}
-#else
-	// draw the random dots
-	float pixels = 0;
-	D2D1_ELLIPSE ellipse;
-	ComPtr<ID2D1SolidColorBrush> starBrush;
-	float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
-	for (int i = 1; i < 2000; i++)
-	{
-		float s = nitstoCCCS((randf()) * 9.f + 1.f);
-		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(s, s, s), &starBrush));
 
-		float2 center = float2(logSize.right * randf(), logSize.bottom * randf());
-		float fRad = randf() * randf() * randf() * 19.f + 1.f;
-		ellipse =
-		{
-			D2D1::Point2F(center.x, center.y),
-			fRad, fRad
-		};
-		ctx->FillEllipse(&ellipse, starBrush.Get());
-
-		pixels += M_PI_F * fRad * fRad * s;
-
-	}
-	float APL = pixels / area;
-#endif
 
 	// create D2D brush of this color
 	ComPtr<ID2D1SolidColorBrush> centerBrush;
@@ -4754,7 +4661,9 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 		title << WhiteLevelBrackets[m_whiteLevelBracket];
 		title << L" - use [ ] to select bracket";
 		if (m_XRitePatchAutoMode)
-			title << "\nAuto changing every "<< m_XRitePatchDisplayTime << "sec";
+			title << "\nAuto changing every " << m_XRitePatchDisplayTime << "sec";
+		else
+			title << L"\nSelect color via Up/Down arrow keys";
 
 //		title << L"   Nits: ";
 //		title << setprecision(4) << nits;
@@ -5588,6 +5497,14 @@ void Game::CreateWindowSizeDependentResources()
 		logicalSize.right,
 		logicalSize.bottom
 	};
+
+	m_TestingTierTextRect =
+	{
+		logicalSize.right - 200.0f,
+		logicalSize.top,
+		logicalSize.right,
+		logicalSize.top + 35.f
+	};
 }
 
 // This loads both device independent and dependent resources for the test pattern.
@@ -5776,7 +5693,7 @@ void Game::SetShift(bool shift)
 	m_shiftKey = shift;
 }
 
-void Game::ChangeSubtest( INT32 increment )
+void Game::ChangeSubtest( INT32 increment )		// called from up/down arrow keys (at least)
 {
 	if (m_shiftKey)
 		increment *= 10;
@@ -5784,6 +5701,11 @@ void Game::ChangeSubtest( INT32 increment )
 	switch (m_currentTest)
 	{
 	case TestPattern::PanelCharacteristics:
+	case TestPattern::TenPercentPeakMAX:
+	case TestPattern::TenPercentPeak:
+//	case TestPattern::ProfileCurve:
+//	case TestPattern::SubTitleFlicker:
+//	case TestPattern::XRiteColors:
 		int testTier;
 		testTier = (int)m_testingTier;
 		testTier += increment;
@@ -5885,10 +5807,6 @@ void Game::ChangeSubtest( INT32 increment )
 		m_currentBlack = (int) wrap((float)m_currentBlack, 0.f, 4.f);	// Just wrap on each end <inclusive!>
 		break;
 
-	case TestPattern::SubTitleFlicker:					// turn subtitle text on/off
-		m_subTitleVisible -= increment;                 // v1.2 subTitle Flicker Test
-		break;
-
 	case TestPattern::XRiteColors:						// cycle through the official Xrite patch colors
 		m_currentXRiteIndex -= increment;
 		m_currentXRiteIndex = (int)wrap((float)m_currentXRiteIndex, 0.f, NUMXRITECOLORS );	// Just wrap on each end <inclusive!>
@@ -5961,6 +5879,12 @@ bool Game::ToggleInfoTextVisible()
 {
     m_showExplanatoryText = !m_showExplanatoryText;
     return m_showExplanatoryText;
+}
+
+bool Game::ToggleSubtitle()
+{
+	m_subtitleVisible = !m_subtitleVisible;
+	return m_subtitleVisible;
 }
 
 void Game::ToggleXRitePatchAuto( void )

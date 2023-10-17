@@ -18,10 +18,9 @@
 BackgroundNoiseEffect::BackgroundNoiseEffect() :
     m_refCount(1)
 {
-    m_constants.center = { 0.0f, 0.0f };
-    m_constants.initialWavelength = 10.0f;
-    m_constants.wavelengthHalvingDistance = 100.0f;
-    m_constants.whiteLevelMultiplier = 1.0f;
+    m_constants.APL = 0.1f;
+    m_constants.Clamp = 1000.0f;        // Limit is high by default
+    m_constants.iTime = 1.0f;
 }
 
 HRESULT __stdcall BackgroundNoiseEffect::CreateBackgroundNoiseImpl(_Outptr_ IUnknown** ppEffectImpl)
@@ -49,31 +48,27 @@ HRESULT BackgroundNoiseEffect::Register(_In_ ID2D1Factory1* pFactory)
             <Effect>
                 <!-- System Properties -->
                 <Property name='DisplayName' type='string' value='BackgroundNoise'/>
-                <Property name='Author' type='string' value='Microsoft Corporation'/>
+                <Property name='Author' type='string' value='VESA'/>
                 <Property name='Category' type='string' value='Source'/>
-                <Property name='Description' type='string' value='Generates a heightmap of a sinewave based on distance from origin'/>
+                <Property name='Description' type='string' value='Generates pixel values with a given probability distribution'/>
                 <Inputs />
                 <!-- Custom Properties go here -->
-                <Property name = 'WavelengthHalvingDistance' type = 'float'>
-                    <Property name = 'DisplayName' type = 'string' value = 'Wavelength Halving Distance'/>
-                    <Property name = 'Min' type = 'float' value = '0.1'/>
-                    <Property name = 'Max' type = 'float' value = '1000.0'/>
-                    <Property name = 'Default' type = 'float' value = '100.0'/>
+                <Property name = 'APL' type = 'float'>
+                    <Property name = 'DisplayName' type = 'string' value = 'Average Picture Level in nits'/>
+                    <Property name = 'Min' type = 'float' value = '0.01'/>
+                    <Property name = 'Max' type = 'float' value = '10.00'/>
+                    <Property name = 'Default' type = 'float' value = '0.10'/>
                 </Property>
-                <Property name = 'InitialWavelength' type = 'float'>
-                    <Property name = 'DisplayName' type = 'string' value = 'Initial Wavelength'/>
+                <Property name = 'Clamp' type = 'float'>
+                    <Property name = 'DisplayName' type = 'string' value = 'No pixels can be above this limit (nits)'/>
                     <Property name = 'Min' type = 'float' value = '0.1'/>
                     <Property name = 'Max' type = 'float' value = '1000.0'/>
                     <Property name = 'Default' type = 'float' value = '10.0'/>
                 </Property>
-                <Property name = 'Center' type = 'vector2'>
-                    <Property name = 'DisplayName' type = 'string' value = 'Center'/>
-                    <Property name = 'Default' type = 'vector2' value = '(0.0, 0.0)'/>
-                </Property>
-                <Property name = 'WhiteLevelMultiplier' type = 'float'>
-                    <Property name = 'DisplayName' type = 'string' value = 'White Level Multiplier'/>
-                    <Property name = 'Min' type = 'float' value = '1.0'/>
-                    <Property name = 'Max' type = 'float' value = '6.0'/>
+                <Property name = 'iTime' type = 'float'>
+                    <Property name = 'DisplayName' type = 'string' value = 'Time since app start (sec)'/>
+                    <Property name = 'Min' type = 'float' value = '0.0'/>
+                    <Property name = 'Max' type = 'float' value = '1000000.0'/>
                     <Property name = 'Default' type = 'float' value = '1.0'/>
                 </Property>
             </Effect>
@@ -81,10 +76,9 @@ HRESULT BackgroundNoiseEffect::Register(_In_ ID2D1Factory1* pFactory)
 
     const D2D1_PROPERTY_BINDING bindings[] =
     {
-        D2D1_VALUE_TYPE_BINDING(L"WavelengthHalvingDistance", &SetWavelengthHalvingDistance, &GetWavelengthHalvingDistance),
-        D2D1_VALUE_TYPE_BINDING(L"InitialWavelength", &SetInitialWavelength, &GetInitialWavelength),
-        D2D1_VALUE_TYPE_BINDING(L"Center", &SetCenter, &GetCenter),
-        D2D1_VALUE_TYPE_BINDING(L"WhiteLevelMultiplier", &SetWhiteLevelMultiplier, &GetWhiteLevelMultiplier),
+        D2D1_VALUE_TYPE_BINDING(L"APL", &SetAPL, &GetAPL),
+        D2D1_VALUE_TYPE_BINDING(L"Clamp", &SetClamp, &GetClamp),
+        D2D1_VALUE_TYPE_BINDING(L"iTime", &SetiTime, &GetiTime),
     };
 
     // This registers the effect with the factory, which will make the effect
@@ -298,50 +292,38 @@ IFACEMETHODIMP BackgroundNoiseEffect::QueryInterface(
     return hr;
 }
 
-HRESULT BackgroundNoiseEffect::SetCenter(D2D1_POINT_2F center)
+HRESULT BackgroundNoiseEffect::SetAPL( float apl )
 {
-    m_constants.center = center;
+    m_constants.APL = apl;
 
     return S_OK;
 }
 
-D2D1_POINT_2F BackgroundNoiseEffect::GetCenter() const
+float BackgroundNoiseEffect::GetAPL() const
 {
-    return m_constants.center;
+    return m_constants.APL;
 }
 
-HRESULT BackgroundNoiseEffect::SetWavelengthHalvingDistance(float dist)
+HRESULT BackgroundNoiseEffect::SetClamp(float lim )
 {
-    m_constants.wavelengthHalvingDistance = dist;
+    m_constants.Clamp = lim;
 
     return S_OK;
 }
 
-float BackgroundNoiseEffect::GetWavelengthHalvingDistance() const
+float BackgroundNoiseEffect::GetClamp() const
 {
-    return m_constants.wavelengthHalvingDistance;
+    return m_constants.Clamp;
 }
 
-HRESULT BackgroundNoiseEffect::SetInitialWavelength(float wavelength)
+HRESULT BackgroundNoiseEffect::SetiTime(float t)
 {
-    m_constants.initialWavelength = wavelength;
+    m_constants.iTime = t;
 
     return S_OK;
 }
 
-float BackgroundNoiseEffect::GetInitialWavelength() const
+float BackgroundNoiseEffect::GetiTime() const
 {
-    return m_constants.initialWavelength;
-}
-
-HRESULT BackgroundNoiseEffect::SetWhiteLevelMultiplier(float multiplier)
-{
-    m_constants.whiteLevelMultiplier = multiplier;
-
-    return S_OK;
-}
-
-float BackgroundNoiseEffect::GetWhiteLevelMultiplier() const
-{
-    return m_constants.whiteLevelMultiplier;
+    return m_constants.iTime;
 }
