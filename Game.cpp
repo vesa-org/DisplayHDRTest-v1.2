@@ -207,7 +207,7 @@ void Game::ConstructorInternal()
 
 	m_checkerboard = Checkerboard::Cb6x4;
 	m_snoodDiam = 40.f;							// OD of sensor snood in mm
-	m_LocalDimmingBars = 1;						// v1.2 Local Dimming Contrast test
+	m_LocalDimmingBars = 0;						// v1.2 Local Dimming Contrast test
 	m_subtitleVisible = 1;						// v1.4 subTitle Flicker Test
 	m_currentXRiteIndex = 0;					// v1.5 current index into array of Xrite patch colors
 	m_XRitePatchAutoMode = FALSE;				// v1.5 flag for when it auto animates
@@ -704,6 +704,7 @@ void Game::UpdateDxgiColorimetryInfo()
 
 	// get PQ code at MaxLuminance
 	m_maxPQCode = (int) roundf(1023.0f*Apply2084(m_rawOutDesc.MaxLuminance / 10000.f));
+//	m_maxPQCode = 1023;
 
 	m_dxgiColorInfoStale = false;
 
@@ -852,7 +853,7 @@ void Game::GenerateTestPattern_StartOfTest(ID2D1DeviceContext2* ctx)
     if (m_newTestSelected) SetMetadataNeutral();
 
     text << m_appTitle;
-    text << L"\n\nVersion 1.2 Beta 11\n\n";
+    text << L"\n\nVersion 1.2 Beta 12\n\n";
     //text << L"ALT-ENTER: Toggle fullscreen: all measurements should be made in fullscreen\n";
 	text << L"->, PAGE DN:       Move to next test\n";
 	text << L"<-, PAGE UP:        Move to previous test\n";
@@ -4173,123 +4174,218 @@ void Game::GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx)			
 
 	// Compute box intensity based on EDID
 	float nits = m_outputDesc.MaxLuminance;
-	float avg = nits * 0.70f;        // 70% screen area
+	float avg = nits * 0.20f;        // 20% screen area
 
 	if (m_newTestSelected)
 		SetMetadata(nits, avg, GAMUT_Native);
 
-	float c = nitstoCCCS(nits);
-	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &barBrush));
-
-	// define the white bars
+	auto rsc = m_testPatternResources[TestPattern::TenPercentPeak];
+	std::wstringstream title;
+	float dpi = m_deviceResources->GetDpi();
 	auto logSize = m_deviceResources->GetLogicalSize();
-	float fSizeW = (logSize.right - logSize.left) * 0.12f;				// bar is 15% screen width
-	D2D1_RECT_F leftRect =
-	{
-		logSize.left,				// xmin
-		logSize.top,				// ymin
-		logSize.left + fSizeW,		// xmax
-		logSize.bottom,				// ymax
-	};
-
-	D2D1_RECT_F rightRect =
-	{
-		logSize.right - fSizeW,		// xmin
-		logSize.top,				// ymin
-		logSize.right,				// xmax
-		logSize.bottom				// ymax
-	};
-
-	float fSizeH = (logSize.bottom - logSize.top) * 0.12f;				// bar is 15% screen height
-	D2D1_RECT_F topRect =
-	{
-		logSize.left,				// xmin
-		logSize.top,				// ymin
-		logSize.right,				// xmax
-		logSize.top + fSizeH,		// ymax
-	};
-
-	D2D1_RECT_F bottomRect =
-	{
-		logSize.left,				// xmin
-		logSize.bottom - fSizeH,	// ymin
-		logSize.right,				// xmax
-		logSize.bottom				// ymax
-	};
+	float fSizeW = (logSize.right - logSize.left) * 0.03f;				// bar is 3% screen width
+	float fSizeH = (logSize.bottom - logSize.top) * 0.03f;				// bar is 3% screen height
+	float2 center;
+	center.x = (logSize.right - logSize.left) * 0.50f;
+	center.y = (logSize.bottom - logSize.top) * 0.50f;
+	float screenSize = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top));
+	ComPtr<ID2D1SolidColorBrush> centerBrush;
+	float c = nitstoCCCS(nits);
+	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &centerBrush));
 
 	switch (m_LocalDimmingBars)
 	{
-	case 0:		// draw no bars
-		break;
-	case 1:
-		ctx->FillRectangle(&leftRect, barBrush.Get());				// vertical side bars
+
+	case 0:				// 1-D local dimming test image
+	{
+		// Draw the background noise effect
+		if (!rsc.effectIsValid)
+		{
+			title << L"\nERROR: " << rsc.effectShaderFilename << L" is missing\n";
+		}
+		else
+		{
+			float APL = 5.0f;
+			float limit = 10.0f;
+			// ******* Arguments to this call are not type checked  *********
+			// ******* DO NOT PASS A DOUBLE HERE (EVEN LITERAL!) *** ELSE FAIL ************* 
+			rsc.d2dEffect->SetValueByName(L"APL", APL);		// ****** MUST BE FLOAT!		// negative means this is a clamp
+			rsc.d2dEffect->SetValueByName(L"Clamp", limit);									// nits
+			rsc.d2dEffect->SetValueByName(L"iTime", m_totalTime);							// seconds
+
+			ctx->DrawImage(rsc.d2dEffect.Get());
+		}
+
+		// lower left black box
+		D2D1_RECT_F LL_Rect =
+		{
+			logSize.left,				// xmin
+			logSize.top + center.y,		// ymin
+			logSize.left + center.x,	// xmax
+			logSize.bottom				// ymax
+		};
+		ctx->FillRectangle(&LL_Rect, m_blackBrush.Get());
+
+		// upper right black box
+		D2D1_RECT_F UR_Rect =
+		{
+			logSize.left + center.x,	// xmin
+			logSize.top,				// ymin
+			logSize.right,				// xmax
+			logSize.top + center.y,		// ymax
+		};
+		ctx->FillRectangle(&UR_Rect, m_blackBrush.Get());
+
+		// 8% screen area center box
+		float patchPct = PATCHPCT;
+		float size = screenSize * sqrtf(patchPct);  // dimensions for a square of this % screen area
+
+		float2 jitter;
+		float radius = JITTER_RADIUS * dpi / 96.0f;
+
+		do {
+			jitter.x = radius * (randf_s() * 2.f - 1.f);
+			jitter.y = radius * (randf_s() * 2.f - 1.f);
+		} while ((jitter.x * jitter.x + jitter.y * jitter.y) > radius);
+
+		// Apply jitter
+		float2 jcenter = center + jitter;
+
+		D2D1_RECT_F centerRect =
+		{
+			jcenter.x - size * 0.50f,
+			jcenter.y - size * 0.50f,
+			jcenter.x + size * 0.50f,
+			jcenter.y + size * 0.50f
+		};
+		ctx->FillRectangle(&centerRect, centerBrush.Get());
+	}
+	break;
+
+	case 1:													// 2-D local dimming test image
+	{
+		// define the white bars
+		c = nitstoCCCS(nits);
+		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &barBrush));
+
+		D2D1_RECT_F leftRect =
+		{
+			logSize.left,				// xmin
+			logSize.top,				// ymin
+			logSize.left + fSizeW,		// xmax
+			logSize.bottom,				// ymax
+		};
+		ctx->FillRectangle(&leftRect, barBrush.Get());
+
+		D2D1_RECT_F rightRect =
+		{
+			logSize.right - fSizeW,		// xmin
+			logSize.top,				// ymin
+			logSize.right,				// xmax
+			logSize.bottom				// ymax
+		};
 		ctx->FillRectangle(&rightRect, barBrush.Get());
-		break;
-	case 2:
-		ctx->FillRectangle(&topRect, barBrush.Get());				// horizontal bars top&bottom
+
+		D2D1_RECT_F topRect =
+		{
+			logSize.left,				// xmin
+			logSize.top,				// ymin
+			logSize.right,				// xmax
+			logSize.top + fSizeH,		// ymax
+		};
+		ctx->FillRectangle(&topRect, barBrush.Get());
+
+		D2D1_RECT_F bottomRect =
+		{
+			logSize.left,				// xmin
+			logSize.bottom - fSizeH,	// ymin
+			logSize.right,				// xmax
+			logSize.bottom				// ymax
+		};
 		ctx->FillRectangle(&bottomRect, barBrush.Get());
-		break;
-	case 3:
-		ctx->FillRectangle(&leftRect, barBrush.Get());				// all 4 bars on
-		ctx->FillRectangle(&rightRect, barBrush.Get());
-		ctx->FillRectangle(&topRect,  barBrush.Get());
-		ctx->FillRectangle(&bottomRect, barBrush.Get());
-		break;
+
+		float size = screenSize * sqrtf(0.08f);						// dimensions for a square of this % screen area
+		D2D1_RECT_F BrightRect =
+		{
+			logSize.left + fSizeH,
+			logSize.top + center.y - size * 0.50f,
+			logSize.left + fSizeH  + size,
+			logSize.top + center.y + size * 0.50f
+		};
+		ctx->FillRectangle(&BrightRect, barBrush.Get());
+	}
+	break;
+
 	}
 
 	// Everything below this point should be hidden for actual measurements.
 	if (m_showExplanatoryText)
 	{
-		float dpi = m_deviceResources->GetDpi();
-
+		float size = screenSize * sqrtf(0.08f);						// dimensions for a square of this % screen area
 		float fRad = 0.5f * m_snoodDiam / 25.4f * dpi * 1.2f;      // radius of dia 27mm -> inches -> dips
-		float2 center = float2(logSize.right * 0.5f, logSize.bottom * 0.5f);
+		D2D1_ELLIPSE ellipse;
 
-		D2D1_ELLIPSE ellipse =										// TODO probably have to move these to top and bottom in some cases
+		switch (m_LocalDimmingBars)
 		{
-			D2D1::Point2F(center.x, center.y),
-			fRad, fRad
-		};
-		ctx->DrawEllipse(&ellipse, m_redBrush.Get());
+		case 0:
+			ellipse =
+			{
+				D2D1::Point2F(center.x, center.y),
+				fRad, fRad
+			};
+			ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2.f );
 
-		ellipse =
-		{
-			D2D1::Point2F(logSize.right*0.075f, center.y),
-			fRad, fRad
-		};
-		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2.f);
+			size = screenSize * sqrtf(0.05f);						// dimensions for a square of this % screen area
 
-		ellipse =
-		{
-			D2D1::Point2F(logSize.right*0.925f, center.y),
-			fRad, fRad
-		};
-		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2.f );
+			ellipse =
+			{
+				D2D1::Point2F(logSize.right - size * 0.5f, logSize.top + size * 0.5f),
+				fRad, fRad
+			};
+			ctx->DrawEllipse(&ellipse, m_redBrush.Get());
 
-		ellipse =
-		{
-			D2D1::Point2F(center.x, logSize.bottom*0.925f),
-			fRad, fRad
-		};
-		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2.f );
+			ellipse =
+			{
+				D2D1::Point2F(logSize.left + size * 0.5f, logSize.bottom - size * 0.5f),
+				fRad, fRad
+			};
+			ctx->DrawEllipse(&ellipse, m_redBrush.Get());
+		break;
 
-		ellipse =
-		{
-			D2D1::Point2F(center.x, logSize.bottom*0.075f),
-			fRad, fRad
-		};
-		ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2.f );
+		case 1:
+			ellipse =
+			{
+				D2D1::Point2F(logSize.left + fSizeH + size*0.5f, center.y),
+				fRad, fRad
+			};
+			ctx->DrawEllipse(&ellipse, m_redBrush.Get(), 2.f );
 
-		std::wstringstream title;
+			ellipse =
+			{
+				D2D1::Point2F(logSize.right - (center.y - fSizeH) - fSizeW, center.y),
+				fRad, fRad
+			};
+			ctx->DrawEllipse(&ellipse, m_redBrush.Get());
+		break;
+		}
+
 		title << fixed << setw(8) << setprecision(2);
 
-		title << L"   Contrast test for Local Dimming";
+		title << L"   Contrast test for Local Dimming: ";
+		switch (m_LocalDimmingBars)
+		{
+		case 0: title << L" 1-D";
+			break;
+		case 1: title << L" 2-D";
+			break;
+		}
 		title << L"\nNits: ";
 		title << nits * BRIGHTNESS_SLIDER_FACTOR;
 		title << L"  HDR10: ";
 		title << setprecision(0);
 		title << Apply2084(c * 80.f * BRIGHTNESS_SLIDER_FACTOR / 10000.f) * 1023.f;
-		title << L"\n" << m_hideTextString;
+		title << L"\nUp/Down arrows select 1D vs 2D dimming\n";
+		title << m_hideTextString;
 
 		// Shift title text to the right to avoid the corner.
 		D2D1_RECT_F textRect = m_testTitleRect;
@@ -5796,7 +5892,7 @@ void Game::ChangeSubtest( INT32 increment )		// called from up/down arrow keys (
 	// 5 new tests for v1.2								// TODO
 	case TestPattern::LocalDimmingContrast:				// swtich white bars based on tier
 		m_LocalDimmingBars -= increment;
-		m_LocalDimmingBars = (int) wrap((float)m_LocalDimmingBars, 0.f, 3.f);	// Just wrap on each end <inclusive!>
+		m_LocalDimmingBars = (int) wrap((float)m_LocalDimmingBars, 0.f, 1.f);	// Just wrap on each end <inclusive!>
 		break;
 
 	case TestPattern::BlackLevelHDRvsSDR:				// No UI change - just be clear on SDR vs HDR in text
