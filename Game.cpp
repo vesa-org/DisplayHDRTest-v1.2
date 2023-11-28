@@ -513,7 +513,7 @@ void Game::Update(DX::StepTimer const& timer)
 	{
 		if (m_newTestSelected)
 		{
-			m_testTimeRemainingSec = 1.0f;			// 1 seconds
+			m_testTimeRemainingSec = m_XRitePatchDisplayTime;
 			m_XRitePatchAutoMode = false;           // v1.5 flag for when it auto animates
 		}
 		else
@@ -704,7 +704,7 @@ void Game::UpdateDxgiColorimetryInfo()
 
 	// get PQ code at MaxLuminance
 	m_maxPQCode = (int) roundf(1023.0f*Apply2084(m_rawOutDesc.MaxLuminance / 10000.f));
-//	m_maxPQCode = 1023;
+//	m_maxPQCode = 1023;			// limit PQ code to valid range
 
 	m_dxgiColorInfoStale = false;
 
@@ -853,7 +853,7 @@ void Game::GenerateTestPattern_StartOfTest(ID2D1DeviceContext2* ctx)
     if (m_newTestSelected) SetMetadataNeutral();
 
     text << m_appTitle;
-    text << L"\n\nVersion 1.2 Beta 12\n\n";
+    text << L"\n\nVersion 1.2 Build 13\n\n";
     //text << L"ALT-ENTER: Toggle fullscreen: all measurements should be made in fullscreen\n";
 	text << L"->, PAGE DN:       Move to next test\n";
 	text << L"<-, PAGE UP:        Move to previous test\n";
@@ -3979,7 +3979,7 @@ void Game::GenerateTestPattern_RiseFallTime(ID2D1DeviceContext2 * ctx) //*******
 
 void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //*********************** 9.
 {
-#define NPQCODES 44
+#define NPQCODES 45
 	uint PQCodes[NPQCODES] =
 	{
 		1023,
@@ -4005,6 +4005,7 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 		660,
 		664,
 		668,
+		688,
 		692,
 		704,
 		708,
@@ -4049,7 +4050,7 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 	float c = nitstoCCCS(nits/BRIGHTNESS_SLIDER_FACTOR);		// scale by 80 and slider
 
 	// "tone map" PQ limit of 10k nits down to panel maxLuminance in CCCS
-	float avg = nits * 0.1f;								// 10% screen area
+	float avg = nits * 0.1f;									// 10% screen area
 	if (m_newTestSelected) {
 		SetMetadata(nits, avg, GAMUT_Native);
 	}
@@ -4756,15 +4757,11 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 		title << setbase(10) << L"\n White Level: ";
 		title << WhiteLevelBrackets[m_whiteLevelBracket];
 		title << L" - use [ ] to select bracket";
+		title << L"\nSelect color via Up/Down arrow keys";
+		title << setprecision(1) << L"\nAuto advance using 'A' key. Advances every " << m_XRitePatchDisplayTime << "sec";
+		title << "\nChange timing using +/- keys";
 		if (m_XRitePatchAutoMode)
-			title << "\nAuto changing every " << m_XRitePatchDisplayTime << "sec";
-		else
-			title << L"\nSelect color via Up/Down arrow keys";
-
-//		title << L"   Nits: ";
-//		title << setprecision(4) << nits;
-		//		title << L"   HDR10b: ";
-		//		title << setprecision(4) << PQcheck;		// echo input to validate precision
+			title << L"\nAuto Advance";
 		title << L"\n";
 		title << m_hideTextString;
 
@@ -5904,6 +5901,9 @@ void Game::ChangeSubtest( INT32 increment )		// called from up/down arrow keys (
 		break;
 
 	case TestPattern::XRiteColors:						// cycle through the official Xrite patch colors
+		if (m_XRitePatchAutoMode)
+			break;										// ignore arrow keys if auto advancing
+
 		m_currentXRiteIndex -= increment;
 		m_currentXRiteIndex = (int)wrap((float)m_currentXRiteIndex, 0.f, NUMXRITECOLORS );	// Just wrap on each end <inclusive!>
 		break;
@@ -5986,11 +5986,23 @@ bool Game::ToggleSubtitle()
 void Game::ToggleXRitePatchAuto( void )
 {
 	m_XRitePatchAutoMode = !m_XRitePatchAutoMode;
+
+	if (m_XRitePatchAutoMode)				// reset counter on mode start
+	{
+		m_currentXRiteIndex = 0;
+		m_testTimeRemainingSec = m_XRitePatchDisplayTime;
+	}
 }
 
 // used to manually correct for monitor not being exactly PQ/2084 profile
 void Game::TweakBrightnessBias(INT32 increment)
 {
+	if (m_currentTest == TestPattern::XRiteColors)
+	{
+		m_XRitePatchDisplayTime += increment * 0.1f;
+		return;
+	}
+
 	if (m_shiftKey)
 		increment *= 10;
 

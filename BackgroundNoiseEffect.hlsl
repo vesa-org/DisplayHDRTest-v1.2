@@ -8,8 +8,7 @@
 // PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT. 
 // 
 //*********************************************************
-// 
-#define M_E 2.718281828459045235360f
+//
 // 
 // Custom effects using pixel shaders should use HLSL helper functions defined in
 // d2d1effecthelpers.hlsli to make use of effect shader linking.
@@ -27,68 +26,7 @@ cbuffer constants : register(b0)
     float iTime : packoffset (c0.w);        // time since app start in seconds
 };
 
-/*
-float pi = 3.14159265;
-float pisquared = 9.8696;
 
-// rational approximation to cosine
-float bhaskara( float n)
-{
-    float r1 = fmod( n, 6.283185307f );  // Last arg of fmod() has to be an immediate constant else result is zero!!!!!
-    return r1*5.f;
-
-    float r2 = r1-pi;
-    if (abs(r2)<pi*.5)
-    {  
-        return -(pisquared-4.0*r2*r2)/(pisquared+r2*r2);
-    }
-    else
-    {
-        r2-=pi*1.0;
-        if (r2<-pi*.5)
-        {
-            r2+=2.0*pi;
-        }
-        return (pisquared-4.0*r2*r2)/(pisquared+r2*r2);
-    }   
-}
-
-
-float hash( float2 p )
-{
-//  return frac(bhaskara(p.x + p.y * 57.1235)*54671.57391);
-    return frac(     cos(p.x + p.y * 57.1235)*54671.57391);
-}
-
-float hash( float2 p)       // hash12 floating point
-{
-    float3 p3 = frac(float3(p.xyx) * .1031);
-    p3 += dot(p3, p3.yzx + 33.33);
-    return frac((p3.x + p3.y) * p3.z);
-}
-
-float hash( int2 p )            // integers require shader model 5.0 or higher
-{
-    // 2D -> 1D
-    int n = p.x * 3 + p.y * 113;
-
-    // 1D hash by Hugo Elias
-    n = (n << 13) ^ n;
-    n = n * (n * n * 15731 + 789221) + 1376312589;
-//  return -1.0 + 2.0 * float(n & 0x0fffffff) / float(0x0fffffff);
-    return              float(n & 0x0fffffff) / float(0x0fffffff);
-}
-
- float noise(float2 p)
-{
-    float2 i = floor(p);
-    float2 f = frac(p);
-    f = f * f * (3.0 - 2.0 * f);             // cubic interpolant aka smoothstep()
-
-    return lerp(lerp(hash(i + float2(0.0, 0.0)), hash(i + float2(1.0, 0.0)), f.x),
-        lerp(hash(i + float2(0.0, 1.0)), hash(i + float2(1.0, 1.0)), f.x), f.y);
-}
-*/
 
 // https://www.pcg-random.org/
 uint pcg(uint v)
@@ -119,7 +57,7 @@ D2D_PS_ENTRY(main)
     pos.x -= iTime * 60.0;                              // animate
     pos.y += iTime * 60.0;
 
-    //  pos /= 4;                                       // derez into tiles
+//  pos /= 4;                                           // derez into tiles
 
     int i = 0;
     while (c > Clamp)                                   // check vs Clamp
