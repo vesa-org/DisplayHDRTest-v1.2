@@ -853,7 +853,7 @@ void Game::GenerateTestPattern_StartOfTest(ID2D1DeviceContext2* ctx)
     if (m_newTestSelected) SetMetadataNeutral();
 
     text << m_appTitle;
-    text << L"\n\nVersion 1.2 Build 13\n\n";
+    text << L"\n\nVersion 1.2 Build 15\n\n";
     //text << L"ALT-ENTER: Toggle fullscreen: all measurements should be made in fullscreen\n";
 	text << L"->, PAGE DN:       Move to next test\n";
 	text << L"<-, PAGE UP:        Move to previous test\n";
@@ -1863,8 +1863,9 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2* ctx) //******
 	else
 	{
 		float TierMaxLum = GetTierLuminance(m_testingTier);
-		float APL = TierMaxLum * 0.022222222f;												// convert to nits based on current tier
-		float limit = 400.0f;
+		float APL = TierMaxLum * 0.02174f;							// convert to nits based on current tier
+		float limit = 100.0f;
+
 		// ******* Arguments to this call are not type checked  *********
 		// ******* DO NOT PASS A DOUBLE HERE (EVEN LITERAL!) *** ELSE FAIL ************* 
 		rsc.d2dEffect->SetValueByName(L"APL", APL );		// ****** MUST BE FLOAT!		// in nits
@@ -4065,11 +4066,16 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 	}
 	else
 	{
-		float noiseNits = min(nits, 100.0f)*0.5;					// clamp background APL to max of 50
-		float limit = 100.0f;										// clamp all pixel values to this
+		float TierMaxLum = GetTierLuminance(m_testingTier);
+		float noiseAPL = TierMaxLum * 0.02174f;					// assume noise covers 92% of screen
+		if (noiseAPL > 100.0f) noiseAPL = 100.0f;				// clamp noise APL to max of 100 nits in all cases
+		float limit = 100.0f;									// clamp all noise pixel values to this
+		if (limit > nits) limit = nits;							// no noise pixels brighter than patch
+		if (noiseAPL > limit) noiseAPL = limit;					// don't have average APL higher than pixel limit
+
 		// ******* Arguments to this call are not type checked  *********
 		// ******* DO NOT PASS A DOUBLE HERE (EVEN LITERAL!) *** ELSE FAIL ************* 
-		rsc.d2dEffect->SetValueByName(L"APL", noiseNits );	// ****** MUST BE FLOAT!		// average luminance across image
+		rsc.d2dEffect->SetValueByName(L"APL", noiseAPL );	// ****** MUST BE FLOAT!		// average luminance of noise in nits
 		rsc.d2dEffect->SetValueByName(L"Clamp", limit );									// no pixels above this (nits)
 		rsc.d2dEffect->SetValueByName(L"iTime", m_totalTime);								// seconds
 
@@ -4129,11 +4135,11 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 		title << fixed << setw(8) << setprecision(0);
 		title << L"9. Validating 2084 Profile Curve in nits\n";
 		title << L"Subtest#: ";
-		title << m_currentProfileTile;
+		title << setw(2) << m_currentProfileTile;
 		title << L"   HDR10: ";
-		title << PQCode;
+		title << setw(3) << PQCode;
 		title << L"   Nits: ";
-		title << setprecision(4) << nits;
+		title << setw(4) << setprecision(0) << nits;
 //		title << L"   HDR10b: ";
 //		title << setprecision(4) << PQcheck;		// echo input to validate precision
 		title << L"\nUp/Down arrow keys select level";
@@ -4210,7 +4216,7 @@ void Game::GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx)			
 			float limit = 10.0f;
 			// ******* Arguments to this call are not type checked  *********
 			// ******* DO NOT PASS A DOUBLE HERE (EVEN LITERAL!) *** ELSE FAIL ************* 
-			rsc.d2dEffect->SetValueByName(L"APL", APL);		// ****** MUST BE FLOAT!		// negative means this is a clamp
+			rsc.d2dEffect->SetValueByName(L"APL", APL);		// ****** MUST BE FLOAT!
 			rsc.d2dEffect->SetValueByName(L"Clamp", limit);									// nits
 			rsc.d2dEffect->SetValueByName(L"iTime", m_totalTime);							// seconds
 
@@ -4525,11 +4531,11 @@ void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	      
 	}
 	else
 	{
-		float APL = 5.0f;
+		float noiseAPL = 5.0f;
 		float limit = 10.0f;
 		// ******* Arguments to this call are not type checked  *********
 		// ******* DO NOT PASS A DOUBLE HERE (EVEN LITERAL!) *** ELSE FAIL ************* 
-		rsc.d2dEffect->SetValueByName(L"APL", APL );		// ****** MUST BE FLOAT!		// negative means this is a clamp
+		rsc.d2dEffect->SetValueByName(L"APL", noiseAPL );		// ****** MUST BE FLOAT!
 		rsc.d2dEffect->SetValueByName(L"Clamp", limit );									// nits
 		rsc.d2dEffect->SetValueByName(L"iTime", m_totalTime);								// seconds
 
@@ -4687,11 +4693,11 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 	else
 	{
 		float TierMaxLum = GetTierLuminance(m_testingTier);
-		float apl = TierMaxLum * 0.02222222f;
-		float limit = 400.0f;
+		float noiseAPL = TierMaxLum * 0.02174f;
+		float limit = 100.0f;
 		// ******* Arguments to these calls are not type checked  *********
 		// ******* DO NOT PASS A DOUBLE HERE (EVEN LITERAL!) *** ELSE FAIL ************* 
-		rsc.d2dEffect->SetValueByName(L"APL", apl );		// ****** MUST BE FLOAT!		// fraction of screen
+		rsc.d2dEffect->SetValueByName(L"APL", noiseAPL);	// ****** MUST BE FLOAT!		// fraction of screen
 		rsc.d2dEffect->SetValueByName(L"Clamp", limit );									// nits
 		rsc.d2dEffect->SetValueByName(L"iTime", m_totalTime);								// seconds
 
