@@ -378,24 +378,29 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 //          game->ChangeGradientColor(-0.05f, -0.05f, -0.05f);
             break;
 
+        case VK_PAUSE:
+        case 0x50: // 'p'
+            game->PauseAnimation();
+            break;
+
         case 0x53: // 's'
-  //        game->ChangeGradientColor(0.05f, 0.05f, 0.05f);
+//          game->ChangeGradientColor(0.05f, 0.05f, 0.05f);
             break;
 
         case VK_OEM_PERIOD:
-            game->ChangeCheckerboard(false);
+            game->ChangeCheckerboard(+1);
             break;
 
         case VK_OEM_COMMA:
-            game->ChangeCheckerboard(true);
+            game->ChangeCheckerboard(-1);
             break;
 
         case VK_OEM_PLUS:
-            game->TweakBrightnessBias(+1);  // correct for monitor being out of calibration
+            game->ChangeXRitePatchDisplayTime(+1);  // correct for monitor being out of calibration
             break;
 
         case VK_OEM_MINUS:
-            game->TweakBrightnessBias(-1);  // correct for monitor being out of calibration
+            game->ChangeXRitePatchDisplayTime(-1);  // correct for monitor being out of calibration
             break;
             
         case VK_OEM_4:  // [

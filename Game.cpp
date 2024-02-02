@@ -214,7 +214,7 @@ void Game::ConstructorInternal()
 	m_XRitePatchDisplayTime = 1.f;				// v1.5 duration to show color patch in auto mode
 //	m_XRitePatchTimer = 0;						// v1.5 timer to run until DisplayTime is up.
 	m_whiteLevelBracket = 1;					// what tier/level we should use
-	m_brightnessBias = 0;						// correction for panel
+	m_XRiteIntensity = 0;						// correction for panel
 
 	//	These are sRGB code values for HDR10:
 	m_maxEffectivesRGBValue = -1;	// not set yet
@@ -231,6 +231,8 @@ void Game::ConstructorInternal()
 	m_staticContrastPQValue = 0.0f;
 	m_activeDimming50PQValue = 0.0f;
 	m_activeDimming05PQValue = 0.0f;
+
+	m_bPaused = false;							// default to animations running, not paused
 
 	m_deviceResources = std::make_unique<DX::DeviceResources>();
 
@@ -853,7 +855,7 @@ void Game::GenerateTestPattern_StartOfTest(ID2D1DeviceContext2* ctx)
     if (m_newTestSelected) SetMetadataNeutral();
 
     text << m_appTitle;
-    text << L"\n\nVersion 1.2 Build 15\n\n";
+    text << L"\n\nVersion 1.2 Build 17\n\n";
     //text << L"ALT-ENTER: Toggle fullscreen: all measurements should be made in fullscreen\n";
 	text << L"->, PAGE DN:       Move to next test\n";
 	text << L"<-, PAGE UP:        Move to previous test\n";
@@ -1865,12 +1867,14 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2* ctx) //******
 		float TierMaxLum = GetTierLuminance(m_testingTier);
 		float APL = TierMaxLum * 0.02174f;							// convert to nits based on current tier
 		float limit = 100.0f;
+		float time = m_totalTime;									// animate with the clock
+		if (m_bPaused) time = 0;									// unless paused so we fix it at 0.0
 
 		// ******* Arguments to this call are not type checked  *********
 		// ******* DO NOT PASS A DOUBLE HERE (EVEN LITERAL!) *** ELSE FAIL ************* 
-		rsc.d2dEffect->SetValueByName(L"APL", APL );		// ****** MUST BE FLOAT!		// in nits
-		rsc.d2dEffect->SetValueByName(L"Clamp", limit );									// nits
-		rsc.d2dEffect->SetValueByName(L"iTime", m_totalTime );								// seconds
+		rsc.d2dEffect->SetValueByName(L"APL", APL );		// ****** MUST BE FLOAT!	// in nits
+		rsc.d2dEffect->SetValueByName(L"Clamp", limit );								// nits
+		rsc.d2dEffect->SetValueByName(L"iTime", time );									// seconds
 
 		ctx->DrawImage(rsc.d2dEffect.Get());
 	}
@@ -1970,13 +1974,15 @@ void Game::GenerateTestPattern_TenPercentPeakMAX(ID2D1DeviceContext2 * ctx) //**
 	else
 	{
 		float TierMaxLum = GetTierLuminance(m_testingTier);
-		float APL = TierMaxLum * 0.022222222f;												// convert to nits based on current tier
+		float APL = TierMaxLum * 0.022222222f;								// convert to nits based on current tier
 		float limit = 400.0f;
+		float time = m_totalTime;								// animate with the clock
+		if (m_bPaused) time = 0;								// unless paused so we fix it at 0.0
 		// ******* Arguments to this call are not type checked  *********
 		// ******* DO NOT PASS A DOUBLE HERE (EVEN LITERAL!) *** ELSE FAIL ************* 
-		rsc.d2dEffect->SetValueByName(L"APL", APL);		// ****** MUST BE FLOAT!			// average luminance in nits
-		rsc.d2dEffect->SetValueByName(L"Clamp", limit );									// nits
-		rsc.d2dEffect->SetValueByName(L"iTime", m_totalTime);								// seconds
+		rsc.d2dEffect->SetValueByName(L"APL", APL);		// ****** MUST BE FLOAT! // average luminance in nits
+		rsc.d2dEffect->SetValueByName(L"Clamp", limit );						// nits
+		rsc.d2dEffect->SetValueByName(L"iTime", time );							// seconds
 
 		ctx->DrawImage(rsc.d2dEffect.Get());
 	}
@@ -4072,12 +4078,14 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 		float limit = 100.0f;									// clamp all noise pixel values to this
 		if (limit > nits) limit = nits;							// no noise pixels brighter than patch
 		if (noiseAPL > limit) noiseAPL = limit;					// don't have average APL higher than pixel limit
+		float time = m_totalTime;								// animate with the clock
+		if (m_bPaused) time = 0;								// unless paused so we fix it at 0.0
 
 		// ******* Arguments to this call are not type checked  *********
 		// ******* DO NOT PASS A DOUBLE HERE (EVEN LITERAL!) *** ELSE FAIL ************* 
-		rsc.d2dEffect->SetValueByName(L"APL", noiseAPL );	// ****** MUST BE FLOAT!		// average luminance of noise in nits
-		rsc.d2dEffect->SetValueByName(L"Clamp", limit );									// no pixels above this (nits)
-		rsc.d2dEffect->SetValueByName(L"iTime", m_totalTime);								// seconds
+		rsc.d2dEffect->SetValueByName(L"APL", noiseAPL );	// ****** MUST BE FLOAT!	// average luminance of noise in nits
+		rsc.d2dEffect->SetValueByName(L"Clamp", limit );								// no pixels above this (nits)
+		rsc.d2dEffect->SetValueByName(L"iTime", time );									// seconds
 
 		ctx->DrawImage(rsc.d2dEffect.Get());
 	}
@@ -4212,34 +4220,44 @@ void Game::GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx)			
 		}
 		else
 		{
+			float avg = nits * 0.09f;        // 9% screen area
+
+			if (m_newTestSelected)
+				SetMetadata(nits, avg, GAMUT_Native);
+
 			float APL = 5.0f;
 			float limit = 10.0f;
+			float time = m_totalTime;								// animate with the clock
+			if (m_bPaused) time = 0;								// unless paused so we fix it at 0.0
 			// ******* Arguments to this call are not type checked  *********
 			// ******* DO NOT PASS A DOUBLE HERE (EVEN LITERAL!) *** ELSE FAIL ************* 
-			rsc.d2dEffect->SetValueByName(L"APL", APL);		// ****** MUST BE FLOAT!
-			rsc.d2dEffect->SetValueByName(L"Clamp", limit);									// nits
-			rsc.d2dEffect->SetValueByName(L"iTime", m_totalTime);							// seconds
+			rsc.d2dEffect->SetValueByName(L"APL", APL );		// ****** MUST BE FLOAT!
+			rsc.d2dEffect->SetValueByName(L"Clamp", limit );				// nits
+			rsc.d2dEffect->SetValueByName(L"iTime", time );					// seconds
 
 			ctx->DrawImage(rsc.d2dEffect.Get());
 		}
 
+		// speckle boxes should be 30% of screen area each, not just 1/4
+		float dx = (logSize.right - logSize.left) * sqrt(0.30f);
+		float dy = (logSize.bottom - logSize.top) * sqrt(0.30f);
 		// lower left black box
 		D2D1_RECT_F LL_Rect =
 		{
-			logSize.left,				// xmin
-			logSize.top + center.y,		// ymin
-			logSize.left + center.x,	// xmax
-			logSize.bottom				// ymax
+			logSize.left,			// xmin
+			logSize.top   + dy,		// ymin
+			logSize.right - dx,		// xmax
+			logSize.bottom			// ymax
 		};
 		ctx->FillRectangle(&LL_Rect, m_blackBrush.Get());
 
 		// upper right black box
 		D2D1_RECT_F UR_Rect =
 		{
-			logSize.left + center.x,	// xmin
-			logSize.top,				// ymin
-			logSize.right,				// xmax
-			logSize.top + center.y,		// ymax
+			logSize.left + dx,		// xmin
+			logSize.top,			// ymin
+			logSize.right,			// xmax
+			logSize.bottom - dy,	// ymax
 		};
 		ctx->FillRectangle(&UR_Rect, m_blackBrush.Get());
 
@@ -4271,6 +4289,11 @@ void Game::GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx)			
 
 	case 1:													// 2-D local dimming test image
 	{
+		float avg = nits * 0.20f;        // 20% screen area
+
+		if (m_newTestSelected)
+			SetMetadata(nits, avg, GAMUT_Native);
+
 		// define the white bars
 		c = nitstoCCCS(nits);
 		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &barBrush));
@@ -4533,11 +4556,13 @@ void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	      
 	{
 		float noiseAPL = 5.0f;
 		float limit = 10.0f;
+		float time = m_totalTime;								// animate with the clock
+		if (m_bPaused) time = 0;								// unless paused so we fix it at 0.0
 		// ******* Arguments to this call are not type checked  *********
 		// ******* DO NOT PASS A DOUBLE HERE (EVEN LITERAL!) *** ELSE FAIL ************* 
 		rsc.d2dEffect->SetValueByName(L"APL", noiseAPL );		// ****** MUST BE FLOAT!
-		rsc.d2dEffect->SetValueByName(L"Clamp", limit );									// nits
-		rsc.d2dEffect->SetValueByName(L"iTime", m_totalTime);								// seconds
+		rsc.d2dEffect->SetValueByName(L"Clamp", limit );					// nits
+		rsc.d2dEffect->SetValueByName(L"iTime", time );						// seconds
 
 		ctx->DrawImage(rsc.d2dEffect.Get());
 	}
@@ -4667,16 +4692,16 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 	colorHDR10.r = XRite[m_currentXRiteIndex].R;
 	colorHDR10.g = XRite[m_currentXRiteIndex].G;
 	colorHDR10.b = XRite[m_currentXRiteIndex].B;
-	
-	// scale up for white level selected
-//	colorHDR10 = colorHDR10 * (float)(0.01f*WhiteLevelBrackets[m_whiteLevelBracket]);
 
+	
 	// convert to Canonical Composition Color Space for desktop compositor
 	float3 colorCCCS = HDR10ToLinear709( colorHDR10 );
 
 	// scale up for white level selected now we are linear
 	colorCCCS = colorCCCS * (float)(0.01f * WhiteLevelBrackets[m_whiteLevelBracket]);
 
+	float factor = (1024.f + m_XRiteIntensity) / 1024.f;
+	colorCCCS = colorCCCS * factor;
 
 	float nits = Remove2084( 1023.f / 1023.0f) * 10000.0f;		// go to linear space
 //	float c = nitstoCCCS(nits / BRIGHTNESS_SLIDER_FACTOR);		// scale by 80 and slider
@@ -4695,11 +4720,13 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 		float TierMaxLum = GetTierLuminance(m_testingTier);
 		float noiseAPL = TierMaxLum * 0.02174f;
 		float limit = 100.0f;
+		float time = m_totalTime;								// animate with the clock
+		if (m_bPaused) time = 0;								// unless paused so we fix it at 0.0
 		// ******* Arguments to these calls are not type checked  *********
 		// ******* DO NOT PASS A DOUBLE HERE (EVEN LITERAL!) *** ELSE FAIL ************* 
-		rsc.d2dEffect->SetValueByName(L"APL", noiseAPL);	// ****** MUST BE FLOAT!		// fraction of screen
-		rsc.d2dEffect->SetValueByName(L"Clamp", limit );									// nits
-		rsc.d2dEffect->SetValueByName(L"iTime", m_totalTime);								// seconds
+		rsc.d2dEffect->SetValueByName(L"APL", noiseAPL);	// ****** MUST BE FLOAT!	// fraction of screen
+		rsc.d2dEffect->SetValueByName(L"Clamp", limit );								// nits
+		rsc.d2dEffect->SetValueByName(L"iTime", time );									// seconds
 
 		ctx->DrawImage(rsc.d2dEffect.Get());
 	}
@@ -4760,14 +4787,17 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 		title << XRite[m_currentXRiteIndex].col;
 		title << setbase(16) << L"   RGB  ";
 		title << setw(6) << XRite[m_currentXRiteIndex].RGB;
+		title << L" - adjust using <,> keys";
 		title << setbase(10) << L"\n White Level: ";
 		title << WhiteLevelBrackets[m_whiteLevelBracket];
-		title << L" - use [ ] to select bracket";
-		title << L"\nSelect color via Up/Down arrow keys";
-		title << setprecision(1) << L"\nAuto advance using 'A' key. Advances every " << m_XRitePatchDisplayTime << "sec";
-		title << "\nChange timing using +/- keys";
+		title << L" - change bracket using [,] keys\n";
+		title << setw(3) << m_XRiteIntensity;
+		title << L" adjust using Up/Down arrow keys";
+		title << setprecision(1) << L"\nAuto advance using 'A' key.\n";
+		title << L"  Advances every " << m_XRitePatchDisplayTime << "sec";
+		title << " - change timing using +/- keys";
 		if (m_XRitePatchAutoMode)
-			title << L"\nAuto Advance";
+			title << L"\n  Auto Advance ON";
 		title << L"\n";
 		title << m_hideTextString;
 
@@ -5802,9 +5832,6 @@ void Game::ChangeSubtest( INT32 increment )		// called from up/down arrow keys (
 	case TestPattern::PanelCharacteristics:
 	case TestPattern::TenPercentPeakMAX:
 	case TestPattern::TenPercentPeak:
-//	case TestPattern::ProfileCurve:
-//	case TestPattern::SubTitleFlicker:
-//	case TestPattern::XRiteColors:
 		int testTier;
 		testTier = (int)m_testingTier;
 		testTier += increment;
@@ -5892,10 +5919,11 @@ void Game::ChangeSubtest( INT32 increment )		// called from up/down arrow keys (
 		m_currentProfileTile = (int) wrap((float)m_currentProfileTile, 0.f, (float)m_maxProfileTile);
 		break;
 
-	// 5 new tests for v1.2								// TODO
+	// The 5 new tests addedfor v1.2
 	case TestPattern::LocalDimmingContrast:				// swtich white bars based on tier
 		m_LocalDimmingBars -= increment;
 		m_LocalDimmingBars = (int) wrap((float)m_LocalDimmingBars, 0.f, 1.f);	// Just wrap on each end <inclusive!>
+		m_newTestSelected = true;
 		break;
 
 	case TestPattern::BlackLevelHDRvsSDR:				// No UI change - just be clear on SDR vs HDR in text
@@ -5907,11 +5935,11 @@ void Game::ChangeSubtest( INT32 increment )		// called from up/down arrow keys (
 		break;
 
 	case TestPattern::XRiteColors:						// cycle through the official Xrite patch colors
-		if (m_XRitePatchAutoMode)
-			break;										// ignore arrow keys if auto advancing
-
-		m_currentXRiteIndex -= increment;
-		m_currentXRiteIndex = (int)wrap((float)m_currentXRiteIndex, 0.f, NUMXRITECOLORS );	// Just wrap on each end <inclusive!>
+		if (CheckHDR_On())
+		{
+			m_XRiteIntensity += increment;
+			m_XRiteIntensity = clamp(m_XRiteIntensity, -50, 50 );		// delta plus or minus
+		}
 		break;
 
 	case TestPattern::StaticGradient:
@@ -5930,9 +5958,21 @@ void Game::ChangeGradientColor(float deltaR, float deltaG, float deltaB)
     m_gradientColor.b += deltaB;
 }
 
-void Game:: ChangeCheckerboard(bool increment)
+void Game:: ChangeCheckerboard( INT32 increment )
 {
-	if (increment)
+	if (m_currentTest == TestPattern::XRiteColors)
+	{
+		if (m_XRitePatchAutoMode)
+			return;									// ignore arrow keys if auto advancing
+
+		
+		m_currentXRiteIndex += increment;
+		m_currentXRiteIndex = (int)wrap((float)m_currentXRiteIndex, 0.f, NUMXRITECOLORS);	// Just wrap on each end <inclusive!>
+
+		return;
+	}
+
+	if (increment < 0)
 	{
 		if (Checkerboard::Cb4x3not == m_checkerboard )
 		{
@@ -5945,7 +5985,7 @@ void Game:: ChangeCheckerboard(bool increment)
 			m_checkerboard = static_cast<Checkerboard>(checkInt);
 		}
 	}
-	else
+	else // (increment > 0)
 	{
 		if (Checkerboard::Cb6x4 == m_checkerboard)
 		{
@@ -5989,6 +6029,12 @@ bool Game::ToggleSubtitle()
 	return m_subtitleVisible;
 }
 
+bool Game::PauseAnimation()
+{
+	m_bPaused = !m_bPaused;
+	return m_bPaused;
+}
+
 void Game::ToggleXRitePatchAuto( void )
 {
 	m_XRitePatchAutoMode = !m_XRitePatchAutoMode;
@@ -6001,18 +6047,16 @@ void Game::ToggleXRitePatchAuto( void )
 }
 
 // used to manually correct for monitor not being exactly PQ/2084 profile
-void Game::TweakBrightnessBias(INT32 increment)
+void Game::ChangeXRitePatchDisplayTime(INT32 increment)
 {
+	if (m_shiftKey)
+		increment *= 10;
+
 	if (m_currentTest == TestPattern::XRiteColors)
 	{
 		m_XRitePatchDisplayTime += increment * 0.1f;
 		return;
 	}
-
-	if (m_shiftKey)
-		increment *= 10;
-
-	m_brightnessBias += increment;
 }
 
 // select brightness level for color patch test - usually based on target testing tier

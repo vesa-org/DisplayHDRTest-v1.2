@@ -166,12 +166,13 @@ public:
     void ChangeSubtest( INT32 increment );
     void SetShift( bool shift );
     void ToggleXRitePatchAuto( void );
-    void TweakBrightnessBias(INT32 increment);
+    void ChangeXRitePatchDisplayTime(INT32 increment);
     void SelectWhiteLevel(INT32 incrememnt);
     void StartTestPattern(void);
     void ChangeGradientColor(float deltaR, float deltaG, float deltaB);
     void ChangeBackBufferFormat(DXGI_FORMAT fmt);
-    void ChangeCheckerboard(bool increment);
+    void ChangeCheckerboard( INT32 increment);
+    bool PauseAnimation();
     bool ToggleSubtitle();
     bool ToggleInfoTextVisible();
     void SetMetadataNeutral(); // OS defaults
@@ -314,8 +315,9 @@ private:
     float                                                   m_XRitePatchDisplayTime;            // how long to show XRite color patch in auto mode
 //  float                                                   m_XRitePatchTimer;                  // timer for tracking above
     INT32                                                   m_whiteLevelBracket;                // what tier/level we should use
-    float                                                   m_brightnessBias;                   // correction for panel
+    INT32                                                   m_XRiteIntensity;                   // correction to X-Rite levels
     float                                                   m_gradientAnimationBase;
+    bool                                                    m_bPaused;
     bool                                                    m_showExplanatoryText;
     float                                                   m_testTimeRemainingSec;
     float                                                   m_gamutVolume;
