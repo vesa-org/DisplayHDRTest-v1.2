@@ -853,7 +853,7 @@ void Game::GenerateTestPattern_StartOfTest(ID2D1DeviceContext2* ctx)
     if (m_newTestSelected) SetMetadataNeutral();
 
     text << m_appTitle;
-    text << L"\n\nVersion 1.2 Build 16\n\n";
+    text << L"\n\nVersion 1.2 Build 15\n\n";
     //text << L"ALT-ENTER: Toggle fullscreen: all measurements should be made in fullscreen\n";
 	text << L"->, PAGE DN:       Move to next test\n";
 	text << L"<-, PAGE UP:        Move to previous test\n";
@@ -4181,6 +4181,10 @@ void Game::GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx)			
 
 	// Compute box intensity based on EDID
 	float nits = m_outputDesc.MaxLuminance;
+	float avg = nits * 0.20f;        // 20% screen area
+
+	if (m_newTestSelected)
+		SetMetadata(nits, avg, GAMUT_Native);
 
 	auto rsc = m_testPatternResources[TestPattern::TenPercentPeak];
 	std::wstringstream title;
@@ -4208,11 +4212,6 @@ void Game::GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx)			
 		}
 		else
 		{
-			float avg = nits * 0.09f;        // 9% screen area
-
-			if (m_newTestSelected)
-				SetMetadata(nits, avg, GAMUT_Native);
-
 			float APL = 5.0f;
 			float limit = 10.0f;
 			// ******* Arguments to this call are not type checked  *********
@@ -4272,11 +4271,6 @@ void Game::GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx)			
 
 	case 1:													// 2-D local dimming test image
 	{
-		float avg = nits * 0.20f;        // 20% screen area
-
-		if (m_newTestSelected)
-			SetMetadata(nits, avg, GAMUT_Native);
-
 		// define the white bars
 		c = nitstoCCCS(nits);
 		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &barBrush));
@@ -5902,7 +5896,6 @@ void Game::ChangeSubtest( INT32 increment )		// called from up/down arrow keys (
 	case TestPattern::LocalDimmingContrast:				// swtich white bars based on tier
 		m_LocalDimmingBars -= increment;
 		m_LocalDimmingBars = (int) wrap((float)m_LocalDimmingBars, 0.f, 1.f);	// Just wrap on each end <inclusive!>
-		m_newTestSelected = true;
 		break;
 
 	case TestPattern::BlackLevelHDRvsSDR:				// No UI change - just be clear on SDR vs HDR in text
