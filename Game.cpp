@@ -855,7 +855,7 @@ void Game::GenerateTestPattern_StartOfTest(ID2D1DeviceContext2* ctx)
     if (m_newTestSelected) SetMetadataNeutral();
 
     text << m_appTitle;
-    text << L"\n\nVersion 1.2 Build 17\n\n";
+    text << L"\n\nVersion 1.2 Build 18\n\n";
     //text << L"ALT-ENTER: Toggle fullscreen: all measurements should be made in fullscreen\n";
 	text << L"->, PAGE DN:       Move to next test\n";
 	text << L"<-, PAGE UP:        Move to previous test\n";
@@ -1856,6 +1856,7 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2* ctx) //******
 		SetMetadata(nits, avg, GAMUT_Native);
 	}
 
+#ifdef NOISE
 	// Draw the background noise effect
 	auto rsc = m_testPatternResources[TestPattern::TenPercentPeak];
 	if (!rsc.effectIsValid)
@@ -1878,6 +1879,34 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2* ctx) //******
 
 		ctx->DrawImage(rsc.d2dEffect.Get());
 	}
+#else
+	// draw a starfield background
+	float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
+	float starNits = min(nits, 100.f);							// clamp nits to max of 100
+	ComPtr<ID2D1SolidColorBrush> starBrush;
+	D2D1_ELLIPSE ellipse;
+	float pixels = 0;
+	float APL;
+	srand(314159);												// seed the starfield rng
+	do
+	{
+		float s = nitstoCCCS((randf()) * starNits);
+		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(s, s, s), &starBrush));
+
+		float2 center = float2(logSize.right * randf(), logSize.bottom * randf());
+		float fRad = randf() * randf() * randf() * 19.f + 1.f;
+		ellipse =
+		{
+			D2D1::Point2F(center.x, center.y),
+			fRad, fRad
+		};
+		ctx->FillEllipse(&ellipse, starBrush.Get());
+
+		pixels += M_PI_F * fRad * fRad * s;					// this sum should be done in linear space!
+		APL = pixels / area;
+
+	} while (APL < 0.0222222);						// 2% average picture Level
+#endif
 
 	// draw the center rectangle
 	float c;
@@ -1965,6 +1994,7 @@ void Game::GenerateTestPattern_TenPercentPeakMAX(ID2D1DeviceContext2 * ctx) //**
     auto logSize = m_deviceResources->GetLogicalSize();
 	std::wstringstream title;
 
+#ifdef NOISE
 	// Draw the background noise effect
 	auto rsc = m_testPatternResources[TestPattern::TenPercentPeak];
 	if (!rsc.effectIsValid)
@@ -1986,6 +2016,34 @@ void Game::GenerateTestPattern_TenPercentPeakMAX(ID2D1DeviceContext2 * ctx) //**
 
 		ctx->DrawImage(rsc.d2dEffect.Get());
 	}
+#else
+	// draw a starfield background
+	float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
+	float starNits = min(nits, 100.f);							// clamp nits to max of 100
+	ComPtr<ID2D1SolidColorBrush> starBrush;
+	D2D1_ELLIPSE ellipse;
+	float pixels = 0;
+	float APL;
+	srand(314159);												// seed the starfield rng
+	do
+	{
+		float s = nitstoCCCS((randf()) * starNits);
+		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(s, s, s), &starBrush));
+
+		float2 center = float2(logSize.right * randf(), logSize.bottom * randf());
+		float fRad = randf() * randf() * randf() * 19.f + 1.f;
+		ellipse =
+		{
+			D2D1::Point2F(center.x, center.y),
+			fRad, fRad
+		};
+		ctx->FillEllipse(&ellipse, starBrush.Get());
+
+		pixels += M_PI_F * fRad * fRad * s;					// this sum should be done in linear space!
+		APL = pixels / area;
+
+	} while (APL < 0.0222222);						// 2% average picture Level
+#endif
 
 	// draw the center white square of the correct intensity
 	ComPtr<ID2D1SolidColorBrush> peakBrush;
@@ -3906,7 +3964,7 @@ void Game::GenerateTestPattern_RiseFallTime(ID2D1DeviceContext2 * ctx) //*******
 	ComPtr<ID2D1SolidColorBrush> starBrush;
 	D2D1_ELLIPSE ellipse;
 	float pixels = 0;
-	srand(314158);												// seed the starfield rng
+	srand(314159);												// seed the starfield rng
 	for (int i = 1; i < 2000; i++)
 	{
 		float s = nitstoCCCS((randf()) * starNits);
@@ -4062,8 +4120,10 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 		SetMetadata(nits, avg, GAMUT_Native);
 	}
 
+	auto logSize = m_deviceResources->GetLogicalSize();
 	std::wstringstream title;
 
+#ifdef NOISE
 	// Draw the background noise effect
 	auto rsc = m_testPatternResources[TestPattern::TenPercentPeak];
 	if (!rsc.effectIsValid)
@@ -4089,10 +4149,47 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 
 		ctx->DrawImage(rsc.d2dEffect.Get());
 	}
+#else
+
+	// draw a starfield background
+	ComPtr<ID2D1SolidColorBrush> starBrush;
+	float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
+	float starNits = min(nits, 100.f);							// clamp nits to max of 100
+	if (starNits < 5.f)
+	{
+		float c = nitstoCCCS(starNits);
+		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &starBrush));
+		ctx->FillRectangle(&logSize, starBrush.Get());
+	}
+	else
+	{
+		D2D1_ELLIPSE ellipse;
+		float pixels = 0;
+		float APL;
+		srand(314159);												// seed the starfield rng
+		do
+		{
+			float s = nitstoCCCS((randf()) * starNits);
+			DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(s, s, s), &starBrush));
+
+			float2 center = float2(logSize.right * randf(), logSize.bottom * randf());
+			float fRad = randf() * randf() * randf() * 19.f + 1.f;
+			ellipse =
+			{
+				D2D1::Point2F(center.x, center.y),
+				fRad, fRad
+			};
+			ctx->FillEllipse(&ellipse, starBrush.Get());
+
+			pixels += M_PI_F * fRad * fRad * s;					// this sum should be done in linear space!
+			APL = pixels / area;
+
+		} while (APL < 0.0222222);						// 2% average picture Level
+	}
+#endif
 
 	// draw center square
 	float dpi = m_deviceResources->GetDpi();
-	auto logSize = m_deviceResources->GetLogicalSize();
 
 	ComPtr<ID2D1SolidColorBrush> centerBrush;
 	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &centerBrush));
@@ -4147,7 +4244,7 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 		title << L"   HDR10: ";
 		title << setw(3) << PQCode;
 		title << L"   Nits: ";
-		title << setw(4) << setprecision(0) << nits;
+		title << setw(4) << setprecision(3) << nits;
 //		title << L"   HDR10b: ";
 //		title << setprecision(4) << PQcheck;		// echo input to validate precision
 		title << L"\nUp/Down arrow keys select level";
@@ -4194,7 +4291,6 @@ void Game::GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx)			
 	if (m_newTestSelected)
 		SetMetadata(nits, avg, GAMUT_Native);
 
-	auto rsc = m_testPatternResources[TestPattern::TenPercentPeak];
 	std::wstringstream title;
 	float dpi = m_deviceResources->GetDpi();
 	auto logSize = m_deviceResources->GetLogicalSize();
@@ -4213,7 +4309,9 @@ void Game::GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx)			
 
 	case 0:				// 1-D local dimming test image
 	{
+#ifdef NOISE
 		// Draw the background noise effect
+		auto rsc = m_testPatternResources[TestPattern::TenPercentPeak];
 		if (!rsc.effectIsValid)
 		{
 			title << L"\nERROR: " << rsc.effectShaderFilename << L" is missing\n";
@@ -4237,6 +4335,34 @@ void Game::GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx)			
 
 			ctx->DrawImage(rsc.d2dEffect.Get());
 		}
+#else
+		// draw a starfield background
+		float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
+		float starNits = min(nits, 100.f);							// clamp nits to max of 100
+		ComPtr<ID2D1SolidColorBrush> starBrush;
+		D2D1_ELLIPSE ellipse;
+		float pixels = 0;
+		float APL;
+		srand(314159);												// seed the starfield rng
+		do
+		{
+			float s = nitstoCCCS((randf()) * starNits);
+			DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(s, s, s), &starBrush));
+
+			float2 center = float2(logSize.right * randf(), logSize.bottom * randf());
+			float fRad = randf() * randf() * randf() * 19.f + 1.f;
+			ellipse =
+			{
+				D2D1::Point2F(center.x, center.y),
+				fRad, fRad
+			};
+			ctx->FillEllipse(&ellipse, starBrush.Get());
+
+			pixels += M_PI_F * fRad * fRad * s;					// this sum should be done in linear space!
+			APL = pixels / area;
+
+		} while (APL < 0.0222222);						// 2% average picture Level
+#endif
 
 		// speckle boxes should be 30% of screen area each, not just 1/4
 		float dx = (logSize.right - logSize.left) * sqrt(0.30f);
@@ -4546,6 +4672,7 @@ void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	      
 	auto logSize = m_deviceResources->GetLogicalSize();
 	std::wstringstream title;
 
+#ifdef NOISE
 	// Draw the background noise effect
 	auto rsc = m_testPatternResources[TestPattern::TenPercentPeak];
 	if (!rsc.effectIsValid)
@@ -4566,6 +4693,34 @@ void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	      
 
 		ctx->DrawImage(rsc.d2dEffect.Get());
 	}
+#else
+	// draw a starfield background
+	float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
+	float starNits = min(nits, 10.f);							// clamp nits to max of 100
+	ComPtr<ID2D1SolidColorBrush> starBrush;
+	D2D1_ELLIPSE ellipse;
+	float pixels = 0;
+	float APL;
+	srand(314159);												// seed the starfield rng
+	do
+	{
+		float s = nitstoCCCS((randf()) * starNits);
+		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(s, s, s), &starBrush));
+
+		float2 center = float2(logSize.right * randf(), logSize.bottom * randf());
+		float fRad = randf() * randf() * randf() * 19.f + 1.f;
+		ellipse =
+		{
+			D2D1::Point2F(center.x, center.y),
+			fRad, fRad
+		};
+		ctx->FillEllipse(&ellipse, starBrush.Get());
+
+		pixels += M_PI_F * fRad * fRad * s;					// this sum should be done in linear space!
+		APL = pixels / area;
+
+	} while (APL < 0.0222222);						// 2% average picture Level
+#endif
 
 	// the center patch
 	// same brightness as everything else
@@ -4709,6 +4864,7 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 	std::wstringstream title;
 	auto logSize = m_deviceResources->GetLogicalSize();
 
+#ifdef NOISE
 // Draw the background noise effect
 	auto rsc = m_testPatternResources[TestPattern::TenPercentPeak];
 	if (!rsc.effectIsValid)
@@ -4730,7 +4886,34 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 
 		ctx->DrawImage(rsc.d2dEffect.Get());
 	}
+#else
+	// draw a starfield background
+	float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
+	float starNits = min(nits, 100.f);							// clamp nits to max of 100
+	ComPtr<ID2D1SolidColorBrush> starBrush;
+	D2D1_ELLIPSE ellipse;
+	float pixels = 0;
+	float APL;
+	srand(314159);												// seed the starfield rng
+	do
+	{
+		float s = nitstoCCCS((randf()) * starNits);
+		DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(s, s, s), &starBrush));
 
+		float2 center = float2(logSize.right * randf(), logSize.bottom * randf());
+		float fRad = randf() * randf() * randf() * 19.f + 1.f;
+		ellipse =
+		{
+			D2D1::Point2F(center.x, center.y),
+			fRad, fRad
+		};
+		ctx->FillEllipse(&ellipse, starBrush.Get());
+
+		pixels += M_PI_F * fRad * fRad * s;					// this sum should be done in linear space!
+		APL = pixels / area;
+
+	} while (APL < 0.0222222);						// 2% average picture Level
+#endif
 
 	// create D2D brush of this color
 	ComPtr<ID2D1SolidColorBrush> centerBrush;
@@ -4787,12 +4970,12 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 		title << XRite[m_currentXRiteIndex].col;
 		title << setbase(16) << L"   RGB  ";
 		title << setw(6) << XRite[m_currentXRiteIndex].RGB;
-		title << L" - adjust using <,> keys";
+		title << L" - adjust using arrow keys";
 		title << setbase(10) << L"\n White Level: ";
 		title << WhiteLevelBrackets[m_whiteLevelBracket];
-		title << L" - change bracket using [,] keys\n";
-		title << setw(3) << m_XRiteIntensity;
-		title << L" adjust using Up/Down arrow keys";
+		title << L" - change bracket using [,] keys";
+//		title << setw(3) << m_XRiteIntensity;
+//		title << L" adjust using Up/Down arrow keys";
 		title << setprecision(1) << L"\nAuto advance using 'A' key.\n";
 		title << L"  Advances every " << m_XRitePatchDisplayTime << "sec";
 		title << " - change timing using +/- keys";
@@ -5935,11 +6118,18 @@ void Game::ChangeSubtest( INT32 increment )		// called from up/down arrow keys (
 		break;
 
 	case TestPattern::XRiteColors:						// cycle through the official Xrite patch colors
+		if (m_XRitePatchAutoMode)
+			break;									// ignore arrow keys if auto advancing
+		m_currentXRiteIndex += increment;
+		m_currentXRiteIndex = (int)wrap((float)m_currentXRiteIndex, 0.f, NUMXRITECOLORS);	// Just wrap on each end <inclusive!>
+
+#if 0
 		if (CheckHDR_On())
 		{
 			m_XRiteIntensity += increment;
 			m_XRiteIntensity = clamp(m_XRiteIntensity, -50, 50 );		// delta plus or minus
 		}
+#endif
 		break;
 
 	case TestPattern::StaticGradient:
@@ -5964,8 +6154,6 @@ void Game:: ChangeCheckerboard( INT32 increment )
 	{
 		if (m_XRitePatchAutoMode)
 			return;									// ignore arrow keys if auto advancing
-
-		
 		m_currentXRiteIndex += increment;
 		m_currentXRiteIndex = (int)wrap((float)m_currentXRiteIndex, 0.f, NUMXRITECOLORS);	// Just wrap on each end <inclusive!>
 
