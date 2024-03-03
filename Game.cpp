@@ -855,7 +855,7 @@ void Game::GenerateTestPattern_StartOfTest(ID2D1DeviceContext2* ctx)
     if (m_newTestSelected) SetMetadataNeutral();
 
     text << m_appTitle;
-    text << L"\n\nVersion 1.2 Build 18\n\n";
+    text << L"\n\nVersion 1.2 Build 19\n\n";
     //text << L"ALT-ENTER: Toggle fullscreen: all measurements should be made in fullscreen\n";
 	text << L"->, PAGE DN:       Move to next test\n";
 	text << L"<-, PAGE UP:        Move to previous test\n";
@@ -1851,7 +1851,7 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2* ctx) //******
 
 	// "tone map" PQ limit of 10k nits down to panel maxLuminance in CCCS
 	float nits = m_outputDesc.MaxLuminance;
-	float avg = nits * patchPct;								// 10% screen area
+	float avg = nits * patchPct + 0.0217 * 80.f;
 	if (m_newTestSelected) {
 		SetMetadata(nits, avg, GAMUT_Native);
 	}
@@ -4115,7 +4115,8 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 	float c = nitstoCCCS(nits/BRIGHTNESS_SLIDER_FACTOR);		// scale by 80 and slider
 
 	// "tone map" PQ limit of 10k nits down to panel maxLuminance in CCCS
-	float avg = nits * 0.1f;									// 10% screen area
+	float patchPct = PATCHPCT;							// patch percentage of screen area
+	float avg = nits * patchPct + 0.0217 * 80.f;
 	if (m_newTestSelected) {
 		SetMetadata(nits, avg, GAMUT_Native);
 	}
@@ -4152,6 +4153,9 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 #else
 
 	// draw a starfield background
+	float TierLum = GetTierLuminance(m_testingTier);
+	float noiseAPL = TierLum * 0.02174f;						// assume noise covers 92% of screen
+
 	ComPtr<ID2D1SolidColorBrush> starBrush;
 	float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
 	float starNits = min(nits, 100.f);							// clamp nits to max of 100
@@ -4195,7 +4199,6 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 	DX::ThrowIfFailed(ctx->CreateSolidColorBrush(D2D1::ColorF(c, c, c), &centerBrush));
 
 	float size = sqrt((logSize.right - logSize.left) * (logSize.bottom - logSize.top));
-	float patchPct = PATCHPCT;
 	size = size * sqrtf(patchPct);  // dimensions for a square of this % screen area
 	float2 center;
 	center.x = (logSize.right - logSize.left) * 0.50f;
@@ -4283,10 +4286,11 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 void Game::GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx)				// v1.2.1
 {
 	ComPtr<ID2D1SolidColorBrush> barBrush;								// for white bars
+	float patchPct = PATCHPCT;							// patch percentage of screen area
 
 	// Compute box intensity based on EDID
 	float nits = m_outputDesc.MaxLuminance;
-	float avg = nits * 0.20f;        // 20% screen area
+	float avg = nits * patchPct + 0.0217*80.f;
 
 	if (m_newTestSelected)
 		SetMetadata(nits, avg, GAMUT_Native);
@@ -4338,7 +4342,7 @@ void Game::GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx)			
 #else
 		// draw a starfield background
 		float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
-		float starNits = min(nits, 100.f);							// clamp nits to max of 100
+		float starNits = min(nits, 10.f);							// clamp nits to max of 10
 		ComPtr<ID2D1SolidColorBrush> starBrush;
 		D2D1_ELLIPSE ellipse;
 		float pixels = 0;
@@ -4388,7 +4392,6 @@ void Game::GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx)			
 		ctx->FillRectangle(&UR_Rect, m_blackBrush.Get());
 
 		// 8% screen area center box
-		float patchPct = PATCHPCT;
 		float size = screenSize * sqrtf(patchPct);  // dimensions for a square of this % screen area
 
 		float2 jitter;
