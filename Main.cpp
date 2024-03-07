@@ -346,31 +346,55 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             game->SetTestPattern(Game::TestPattern::ConnectionProperties);
             break;
         case 0x31:                                                        // '1'
-            game->SetTestPattern(Game::TestPattern::TenPercentPeak);
+            if (!game->GetShift())
+                game->SetTestPattern(Game::TestPattern::TenPercentPeak);
+            else
+                game->SetTestPattern(Game::TestPattern::LocalDimmingContrast);
             break;
+
         case 0x32:                                                        // '2'
-            game->SetTestPattern(Game::TestPattern::FlashTest);
+            if (!game->GetShift())
+                game->SetTestPattern(Game::TestPattern::FlashTest);
+            else
+                game->SetTestPattern(Game::TestPattern::BlackLevelHDRvsSDR);
             break;
+
         case 0x33:                                                        // '3'
-            game->SetTestPattern(Game::TestPattern::LongDurationWhite);
+            if (!game->GetShift())
+                game->SetTestPattern(Game::TestPattern::LongDurationWhite);
+            else
+                game->SetTestPattern(Game::TestPattern::BlackLevelCrush);
             break;
+
         case 0x34:                                                        // '4'
-            game->SetTestPattern(Game::TestPattern::DualCornerBox);
+            if (!game->GetShift())
+                game->SetTestPattern(Game::TestPattern::DualCornerBox);
+            else
+                game->SetTestPattern(Game::TestPattern::SubTitleFlicker);
             break;
+
 		case 0x35:                                                        // '5'
-            game->SetTestPattern(Game::TestPattern::StaticContrastRatio);
+            if (!game->GetShift())
+                game->SetTestPattern(Game::TestPattern::StaticContrastRatio);
+            else
+                game->SetTestPattern(Game::TestPattern::XRiteColors);
             break;
+
         case 0x36:                                                        // '6'
-            game->SetTestPattern(Game::TestPattern::ColorPatches);
+            if (!game->GetShift())
+                game->SetTestPattern(Game::TestPattern::ColorPatches);
             break;
         case 0x37:                                                        // '7'
-            game->SetTestPattern(Game::TestPattern::BitDepthPrecision);
+            if (!game->GetShift())
+                game->SetTestPattern(Game::TestPattern::BitDepthPrecision);
             break;
         case 0x38:                                                        // '8'
-            game->SetTestPattern(Game::TestPattern::RiseFallTime);
+            if (!game->GetShift())
+                game->SetTestPattern(Game::TestPattern::RiseFallTime);
             break;
 		case 0x39:                                                        // '9'
-			game->SetTestPattern(Game::TestPattern::ProfileCurve);
+            if (!game->GetShift())
+    			game->SetTestPattern(Game::TestPattern::ProfileCurve);
 			break;
 
         case 0x41: // 'a'

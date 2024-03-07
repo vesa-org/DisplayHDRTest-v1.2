@@ -29,6 +29,7 @@
 #define BRIGHTNESS_SLIDER_FACTOR (m_rawOutDesc.MaxLuminance / m_outputDesc.MaxLuminance)
 
 #define PATCHPCT (0.08f)
+#define TARGETAPL (0.02f)
 #define NUMXRITECOLORS (97.f)
 struct XriteColors		// provided courtesy of Portrait X-Rite(TM) calibration technology
 {
@@ -855,11 +856,11 @@ void Game::GenerateTestPattern_StartOfTest(ID2D1DeviceContext2* ctx)
     if (m_newTestSelected) SetMetadataNeutral();
 
     text << m_appTitle;
-    text << L"\n\nVersion 1.2 Build 19\n\n";
+    text << L"\n\nVersion 1.2 Build 20\n\n";
     //text << L"ALT-ENTER: Toggle fullscreen: all measurements should be made in fullscreen\n";
 	text << L"->, PAGE DN:       Move to next test\n";
 	text << L"<-, PAGE UP:        Move to previous test\n";
-    text << L"NUMBER KEY:	Jump to test number\n";
+    text << L"NUMBER KEY:	Jump to test number (shift for 1.2 tests)\n";
     text << L"SPACE:		Hide text and target circle\n";
     text << L"C:		Start 60s cool-down\n";
     text << L"ALT-ENTER:	Toggle fullscreen\n";
@@ -1851,7 +1852,7 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2* ctx) //******
 
 	// "tone map" PQ limit of 10k nits down to panel maxLuminance in CCCS
 	float nits = m_outputDesc.MaxLuminance;
-	float avg = nits * patchPct + 0.0217 * 80.f;
+	float avg = nits*patchPct + TARGETAPL/(1.f - PATCHPCT)*80.f;
 	if (m_newTestSelected) {
 		SetMetadata(nits, avg, GAMUT_Native);
 	}
@@ -1866,7 +1867,7 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2* ctx) //******
 	else
 	{
 		float TierMaxLum = GetTierLuminance(m_testingTier);
-		float APL = TierMaxLum * 0.02174f;							// convert to nits based on current tier
+		float APL = TierMaxLum * TARGETAPL/(1.f - PATCHPCT);							// convert to nits based on current tier
 		float limit = 100.0f;
 		float time = m_totalTime;									// animate with the clock
 		if (m_bPaused) time = 0;									// unless paused so we fix it at 0.0
@@ -1905,7 +1906,7 @@ void Game::GenerateTestPattern_TenPercentPeak(ID2D1DeviceContext2* ctx) //******
 		pixels += M_PI_F * fRad * fRad * s;					// this sum should be done in linear space!
 		APL = pixels / area;
 
-	} while (APL < 0.0222222);						// 2% average picture Level
+	} while (APL < TARGETAPL/(1.f-patchPct));				// 2% average picture Level
 #endif
 
 	// draw the center rectangle
@@ -2004,7 +2005,7 @@ void Game::GenerateTestPattern_TenPercentPeakMAX(ID2D1DeviceContext2 * ctx) //**
 	else
 	{
 		float TierMaxLum = GetTierLuminance(m_testingTier);
-		float APL = TierMaxLum * 0.022222222f;								// convert to nits based on current tier
+		float APL = TierMaxLum * TARGETAPL / (1.f - PATCHPCT);								// convert to nits based on current tier
 		float limit = 400.0f;
 		float time = m_totalTime;								// animate with the clock
 		if (m_bPaused) time = 0;								// unless paused so we fix it at 0.0
@@ -2042,7 +2043,7 @@ void Game::GenerateTestPattern_TenPercentPeakMAX(ID2D1DeviceContext2 * ctx) //**
 		pixels += M_PI_F * fRad * fRad * s;					// this sum should be done in linear space!
 		APL = pixels / area;
 
-	} while (APL < 0.0222222);						// 2% average picture Level
+	} while (APL < TARGETAPL / (1.f - PATCHPCT));			// 2% average picture Level
 #endif
 
 	// draw the center white square of the correct intensity
@@ -4116,7 +4117,7 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 
 	// "tone map" PQ limit of 10k nits down to panel maxLuminance in CCCS
 	float patchPct = PATCHPCT;							// patch percentage of screen area
-	float avg = nits * patchPct + 0.0217 * 80.f;
+	float avg = nits * patchPct + TARGETAPL/(1.f - patchPct)*80.f;
 	if (m_newTestSelected) {
 		SetMetadata(nits, avg, GAMUT_Native);
 	}
@@ -4134,7 +4135,7 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 	else
 	{
 		float TierMaxLum = GetTierLuminance(m_testingTier);
-		float noiseAPL = TierMaxLum * 0.02174f;					// assume noise covers 92% of screen
+		float noiseAPL = TierMaxLum * TARGETAPL/(1.f - PATCHPCT);					// assume noise covers 92% of screen
 		if (noiseAPL > 100.0f) noiseAPL = 100.0f;				// clamp noise APL to max of 100 nits in all cases
 		float limit = 100.0f;									// clamp all noise pixel values to this
 		if (limit > nits) limit = nits;							// no noise pixels brighter than patch
@@ -4154,7 +4155,7 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 
 	// draw a starfield background
 	float TierLum = GetTierLuminance(m_testingTier);
-	float noiseAPL = TierLum * 0.02174f;						// assume noise covers 92% of screen
+	float noiseAPL = TierLum * TARGETAPL/(1.f - patchPct);		// assume noise covers 92% of screen
 
 	ComPtr<ID2D1SolidColorBrush> starBrush;
 	float area = (logSize.right - logSize.left) * (logSize.bottom - logSize.top);
@@ -4188,7 +4189,7 @@ void Game::GenerateTestPattern_ProfileCurve(ID2D1DeviceContext2 * ctx)  //******
 			pixels += M_PI_F * fRad * fRad * s;					// this sum should be done in linear space!
 			APL = pixels / area;
 
-		} while (APL < 0.0222222);						// 2% average picture Level
+		} while (APL < TARGETAPL/(1.f - PATCHPCT));				// 2% average picture Level
 	}
 #endif
 
@@ -4290,7 +4291,7 @@ void Game::GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx)			
 
 	// Compute box intensity based on EDID
 	float nits = m_outputDesc.MaxLuminance;
-	float avg = nits * patchPct + 0.0217*80.f;
+	float avg = nits * patchPct + TARGETAPL/(1.f - patchPct)*80.f;
 
 	if (m_newTestSelected)
 		SetMetadata(nits, avg, GAMUT_Native);
@@ -4365,7 +4366,7 @@ void Game::GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx)			
 			pixels += M_PI_F * fRad * fRad * s;					// this sum should be done in linear space!
 			APL = pixels / area;
 
-		} while (APL < 0.0222222);						// 2% average picture Level
+		} while (APL < TARGETAPL / (1.f - PATCHPCT));			// 2% average picture Level
 #endif
 
 		// speckle boxes should be 30% of screen area each, not just 1/4
@@ -4483,6 +4484,8 @@ void Game::GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx)			
 		float size = screenSize * sqrtf(0.08f);						// dimensions for a square of this % screen area
 		float fRad = 0.5f * m_snoodDiam / 25.4f * dpi * 1.2f;      // radius of dia 27mm -> inches -> dips
 		D2D1_ELLIPSE ellipse;
+//		float bigger = sqrtf(2.0f);		// 58mm
+		float bigger = sqrtf(1.5f);		// 50mm
 
 		switch (m_LocalDimmingBars)
 		{
@@ -4499,14 +4502,14 @@ void Game::GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx)			
 			ellipse =
 			{
 				D2D1::Point2F(logSize.right - size * 0.5f, logSize.top + size * 0.5f),
-				fRad, fRad
+				fRad* bigger, fRad* bigger
 			};
 			ctx->DrawEllipse(&ellipse, m_redBrush.Get());
 
 			ellipse =
 			{
 				D2D1::Point2F(logSize.left + size * 0.5f, logSize.bottom - size * 0.5f),
-				fRad, fRad
+				fRad* bigger, fRad* bigger
 			};
 			ctx->DrawEllipse(&ellipse, m_redBrush.Get());
 		break;
@@ -4530,7 +4533,7 @@ void Game::GenerateTestPattern_LocalDimmingContrast(ID2D1DeviceContext2* ctx)			
 
 		title << fixed << setw(8) << setprecision(2);
 
-		title << L"   Contrast test for Local Dimming: ";
+		title << L"1.2.1 Contrast test for Local Dimming: ";
 		switch (m_LocalDimmingBars)
 		{
 		case 0: title << L" 1-D";
@@ -4605,7 +4608,7 @@ void Game::GenerateTestPattern_BlackLevelHDRvsSDR(ID2D1DeviceContext2* ctx)			  
 		std::wstringstream title;
 		title << fixed << setw(8) << setprecision(2);
 
-		title << L"   Black Level in HDR vs SDR";
+		title << L"1.2.2 Black Level in HDR vs SDR";
 		title << L"\nNits: ";
 		title << nits * BRIGHTNESS_SLIDER_FACTOR;
 		title << L"  HDR10: ";
@@ -4644,7 +4647,7 @@ void Game::GenerateTestPattern_BlackLevelCrush(ID2D1DeviceContext2* ctx)		      
 	if (m_showExplanatoryText)
 	{
 		std::wstringstream title;
-		title << L"   Black Level Crush Test: ";
+		title << L"v1.2.3 Black Level Crush Test: ";
 		title << fixed << setw(8) << setprecision(2);
 		title << L"\nNits: ";
 		title << nits;
@@ -4722,7 +4725,7 @@ void Game::GenerateTestPattern_SubTitleFlicker(ID2D1DeviceContext2 * ctx)	      
 		pixels += M_PI_F * fRad * fRad * s;					// this sum should be done in linear space!
 		APL = pixels / area;
 
-	} while (APL < 0.0222222);						// 2% average picture Level
+	} while (APL < TARGETAPL / (1.f - PATCHPCT));			// 2% average picture Level
 #endif
 
 	// the center patch
@@ -4827,7 +4830,7 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 {
 	if (m_newTestSelected)
 	{
-		SetMetadata(m_outputDesc.MaxLuminance, m_outputDesc.MaxLuminance * 0.10f, GAMUT_Native);
+		SetMetadata(m_outputDesc.MaxLuminance, m_outputDesc.MaxLuminance * 0.08f, GAMUT_Native);
 		m_testTimeRemainingSec = 1.0f;			// 1 seconds  be sure we are set up for animation
 	}
 
@@ -4877,7 +4880,7 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 	else
 	{
 		float TierMaxLum = GetTierLuminance(m_testingTier);
-		float noiseAPL = TierMaxLum * 0.02174f;
+		float noiseAPL = TierMaxLum * TARGETAPL/(1.f - PATCHPCT);
 		float limit = 100.0f;
 		float time = m_totalTime;								// animate with the clock
 		if (m_bPaused) time = 0;								// unless paused so we fix it at 0.0
@@ -4915,7 +4918,7 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 		pixels += M_PI_F * fRad * fRad * s;					// this sum should be done in linear space!
 		APL = pixels / area;
 
-	} while (APL < 0.0222222);						// 2% average picture Level
+	} while (APL < TARGETAPL / (1.f - PATCHPCT));			// 2% average picture Level
 #endif
 
 	// create D2D brush of this color
@@ -4964,7 +4967,7 @@ void Game::GenerateTestPattern_XRiteColors(ID2D1DeviceContext2* ctx)						// v1.
 
 		title << fixed << setprecision(0);
 
-		title << L"   X-Rite™ Colors\n";
+		title << L"1.2.5 X-Rite™ Colors\n";
 		title << L"Color#: ";
 		title << setw(3) << XRite[m_currentXRiteIndex].num;
 		title << L"   RxC: ";
@@ -5179,7 +5182,7 @@ void Game::GenerateTestPattern_ToneMapSpike(ID2D1DeviceContext2 * ctx)
 		};
 		ctx->DrawEllipse(&ellipse10, m_redBrush.Get(), 2);
 
-		OPR = 0.0001f;									// 0.01% screen area for sun (noise rejection  limit)
+		OPR = 0.0001f;									// 0.01% screen area for sun (noise rejection limit)
 		fR = fRad * sqrt(OPR);
 		D2D1_ELLIPSE ellipse0001 =
 		{
@@ -6006,6 +6009,11 @@ void Game::ChangeTestPattern(bool increment)
 void Game::SetShift(bool shift)
 {
 	m_shiftKey = shift;
+}
+
+bool Game::GetShift( void )
+{
+	return( m_shiftKey );
 }
 
 void Game::ChangeSubtest( INT32 increment )		// called from up/down arrow keys (at least)

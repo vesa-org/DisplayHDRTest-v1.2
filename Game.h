@@ -111,11 +111,11 @@ public:
 		BitDepthPrecision,          // 7. Uses custom effect.
         RiseFallTime,               // 8.
 		ProfileCurve,               // 9. Validate tracking of 2084 profile
-        LocalDimmingContrast,       // v1.2 
-        BlackLevelHDRvsSDR,         // v1.2 
-        BlackLevelCrush,            // v1.2
-        SubTitleFlicker,            // v1.2 
-        XRiteColors,			    // v1.2 cycle through the official Xrite patch colors
+        LocalDimmingContrast,       // v1.2.1
+        BlackLevelHDRvsSDR,         // v1.2.2
+        BlackLevelCrush,            // v1.2.3
+        SubTitleFlicker,            // v1.2.4
+        XRiteColors,			    // v1.2.5   cycle through the official Xrite patch colors
 		EndOfMandatoryTests,        // 
         SharpeningFilter,           // Uses custom Sine Sweep effect.
 		ToneMapSpike,				// Uses custom Tone Spike effect
@@ -165,6 +165,7 @@ public:
     void ChangeTestPattern(bool increment);
     void ChangeSubtest( INT32 increment );
     void SetShift( bool shift );
+    bool GetShift( void );
     void ToggleXRitePatchAuto( void );
     void ChangeXRitePatchDisplayTime(INT32 increment);
     void SelectWhiteLevel(INT32 incrememnt);
